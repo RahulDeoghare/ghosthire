@@ -1,0 +1,12 @@
+# Verified installed and imported on Python 3.14.6 / macOS arm64 on 2026-08-19.
+# These are the resolved versions from that run — pinned so the build is reproducible.
+
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+rapidfuzz==3.14.5
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+
+# dev
+pytest==9.1.1
+ruff==0.9.6

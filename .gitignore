@@ -1,0 +1,26 @@
+# secrets
+.env
+
+# database — rebuilt from snapshots via `python -m ghosthire.db init`
+*.db
+*.db-journal
+*.sqlite3
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# node / web
+node_modules/
+.vercel/
+
+# os
+.DS_Store
+
+# planning notes — not part of the shipped project
+plan.md
