@@ -247,10 +247,7 @@ def cmd_scrape(args: argparse.Namespace) -> int:
                 slugs = ", ".join(
                     t.get("slug", "?") for t in collector.get("targets") or []
                 )
-                print(
-                    f"no career target with slug {args.company!r}. Known: {slugs}",
-                    file=sys.stderr,
-                )
+                _warn(f"no career target with slug {args.company!r}. Known: {slugs}")
                 return 2
         collectors = [(collector, targets)]
     else:
@@ -259,17 +256,32 @@ def cmd_scrape(args: argparse.Namespace) -> int:
             if c.get("enabled", True)
         ]
         if not matches:
-            print(
-                f"no enabled collector for source {args.source!r}", file=sys.stderr
-            )
+            _warn(f"no enabled collector for source {args.source!r}")
             return 2
         collectors = [(c, c.get("targets") or []) for c in matches]
+
+    # ---- A collector that has no c_* ID yet was never created; it did not
+    # fail. Counting it as a failure made the P1 acceptance command exit 1 on a
+    # fully successful scrape, which breaks `set -e`, cron and sweep.sh.
+    pending = [c for c, _ in collectors if not c.get("collector_id")]
+    collectors = [(c, t) for c, t in collectors if c.get("collector_id")]
+    for collector in pending:
+        print(
+            f"skipping {collector['key']} {DOT} not created yet "
+            f"{DOT} run scrapers/create_collectors.sh {collector['key']}"
+        )
+    if not collectors:
+        _warn(
+            f"no created collector for source {args.source!r}. "
+            "Run scrapers/create_collectors.sh first."
+        )
+        return 2
 
     failures = 0
     for collector, targets in collectors:
         urls = [t["url"] for t in targets if t.get("url")]
         if not urls:
-            print(f"{collector['key']}: no target URLs configured", file=sys.stderr)
+            _warn(f"{collector['key']}: no target URLs configured")
             failures += 1
             continue
 
@@ -288,13 +300,13 @@ def cmd_scrape(args: argparse.Namespace) -> int:
             )
         except BdataError as exc:
             # One misconfigured collector should not cost us the others.
-            print(f"{collector['key']}: {exc}", file=sys.stderr)
+            _warn(f"{collector['key']}: {exc}")
             failures += 1
             continue
 
         print_run_header(result)
         if result.status == "failed":
-            print(f"  status: FAILED {DOT} {result.error}", file=sys.stderr)
+            _warn(f"  status: FAILED {DOT} {result.error}")
             failures += 1
         else:
             print_table(result.rows, limit=args.limit)
