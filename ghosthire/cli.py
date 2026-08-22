@@ -58,6 +58,30 @@ _CONTROL_CHARS: dict[int, str | None] = {
 }
 
 
+def _clean(text: str) -> str:
+    """Strip control bytes and flatten whitespace in remote text.
+
+    Everything Bright Data returns — row values *and* the create envelope's
+    name/status fields — reaches the operator's terminal, so it all goes
+    through here. An escape sequence in a job title would otherwise repaint or
+    clear the screen of whoever runs this.
+    """
+    return " ".join(text.translate(_CONTROL_CHARS).split())
+
+
+def _warn(message: str) -> None:
+    """Write to stderr without letting it overtake stdout.
+
+    Piping the command to `tee` or a log file makes stdout block-buffered
+    while stderr stays unbuffered, so an error can appear *above* the run that
+    produced it. On a recorded demo that reads as the tool contradicting
+    itself.
+    """
+    sys.stdout.flush()
+    print(message, file=sys.stderr)
+    sys.stderr.flush()
+
+
 def _scalar(value: Any) -> str:
     """Render a collector value as flat text, or nothing.
 
@@ -81,8 +105,7 @@ def pick(row: dict[str, Any], field: str) -> str:
         value = row.get(key)
         if value in (None, "", [], {}):
             continue
-        text = _scalar(value).translate(_CONTROL_CHARS)
-        text = " ".join(text.split())
+        text = _clean(_scalar(value))
         if text:
             return text
     return ""
@@ -347,17 +370,12 @@ def cmd_show(args: argparse.Namespace) -> int:
     print()
     print_table(rows, limit=args.limit)
     return 0
-
-
 def cmd_description(args: argparse.Namespace) -> int:
     """Print a field description verbatim. Used by create_collectors.sh."""
     doc = load_collectors()
     descriptions = doc.get("descriptions") or {}
     if args.key not in descriptions:
-        print(
-            f"no description {args.key!r}. Known: {', '.join(descriptions)}",
-            file=sys.stderr,
-        )
+        _warn(f"no description {args.key!r}. Known: {', '.join(descriptions)}")
         return 2
     sys.stdout.write(descriptions[args.key].strip())
     return 0
@@ -608,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except BdataError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _warn(f"error: {exc}")
         return 1
 
 
