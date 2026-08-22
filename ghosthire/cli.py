@@ -477,7 +477,15 @@ def cmd_create(args: argparse.Namespace) -> int:
 # are load-bearing: without a title and a URL a row cannot be matched or
 # verified by a human.
 CAREER_REQUIRED_FIELDS = ("title", "url")
+# Wide enough for the longest ATS name we carry ("smartrecruiters", 15). At 11
+# that row shifted every column right of it — on the table this project exists
+# to show.
+ATS_W = 16
 CAREER_OPTIONAL_FIELDS = ("location", "department")
+
+
+def _ats(target: dict[str, Any]) -> str:
+    return target.get("ats") or "unknown"
 
 
 def _coverage(rows: list[dict[str, Any]], field: str) -> float:
@@ -507,10 +515,9 @@ def cmd_fork(args: argparse.Namespace) -> int:
             wanted.append(slug)
 
     if not wanted:
-        print(
+        _warn(
             "no targets given. The fork test compares one description across "
-            "several ATS platforms, so it needs at least two.",
-            file=sys.stderr,
+            "several ATS platforms, so it needs at least two."
         )
         return 2
 
@@ -519,17 +526,18 @@ def cmd_fork(args: argparse.Namespace) -> int:
         match = next((t for t in all_targets if t.get("slug") == slug), None)
         if match is None:
             known = ", ".join(t.get("slug", "?") for t in all_targets)
-            print(f"unknown target {slug!r}. Known: {known}", file=sys.stderr)
+            _warn(f"unknown target {slug!r}. Known: {known}")
             return 2
         targets.append(match)
 
-    platforms = sorted({t.get("ats", "unknown") for t in targets})
+    # `or "unknown"` rather than a dict default: a target with `ats:` left
+    # blank yields None, and sorted({None, "greenhouse"}) is a TypeError.
+    platforms = sorted({t.get("ats") or "unknown" for t in targets})
     if len(platforms) < 2:
-        print(
+        _warn(
             f"all {len(targets)} target(s) run {platforms[0]!r}. The question "
             "is whether one description survives DIFFERENT platforms, so pick "
-            "targets that do not share an ATS.",
-            file=sys.stderr,
+            "targets that do not share an ATS."
         )
         return 2
     print(
@@ -552,32 +560,44 @@ def cmd_fork(args: argparse.Namespace) -> int:
                 stream=True,
             )
         except BdataError as exc:
-            print(f"error: {exc}", file=sys.stderr)
+            _warn(f"error: {exc}")
             return 1
         results.append((target, result))
         print(
-            f"  {target['slug']:<14} {target.get('ats', '?'):<11} "
+            f"  {target['slug']:<14} {_ats(target):<{ATS_W}} "
             f"{result.status:<8} {result.rows_returned:>4} rows  "
             f"{result.duration_s}s  → {_rel(result.snapshot_path)}"
         )
 
     print()
-    header = f"{'TARGET':<14} {'ATS':<11} {'ROWS':>5}  "
+    header = (
+        f"{'TARGET':<14} {_pad('ATS', ATS_W)} {'STATUS':<8} {'ROWS':>5}  "
+    )
     header += "  ".join(f"{f.upper():>10}" for f in
                         CAREER_REQUIRED_FIELDS + CAREER_OPTIONAL_FIELDS)
     print(header)
     print("-" * len(header))
 
+    # ---- A run that failed never tested the description: the CLI errored, or
+    # the crawler never read the page. Those tell us nothing about whether one
+    # description generalizes, so they are excluded from the verdict rather
+    # than counted as evidence against it.
+    tested = [(t, r) for t, r in results if r.status != "failed"]
+    failed = [(t, r) for t, r in results if r.status == "failed"]
+
     generalized = 0
     for target, result in results:
         cells = []
         for fld in CAREER_REQUIRED_FIELDS + CAREER_OPTIONAL_FIELDS:
-            cells.append(f"{_coverage(result.rows, fld) * 100:9.0f}%")
+            cells.append(
+                "        —" if result.status == "failed"
+                else f"{_coverage(result.rows, fld) * 100:9.0f}%"
+            )
         print(
-            f"{target['slug']:<14} {target.get('ats', '?'):<11} "
-            f"{result.rows_returned:>5}  " + "  ".join(cells)
+            f"{target['slug']:<14} {_pad(_ats(target), ATS_W)} "
+            f"{result.status:<8} {result.rows_returned:>5}  " + "  ".join(cells)
         )
-        if result.rows and all(
+        if result.status != "failed" and result.rows and all(
             _coverage(result.rows, fld) >= 0.9 for fld in CAREER_REQUIRED_FIELDS
         ):
             generalized += 1
@@ -587,20 +607,40 @@ def cmd_fork(args: argparse.Namespace) -> int:
     if not total:
         print("VERDICT: NONE — no target produced a result, so nothing is proven.")
         return 1
-    if generalized == total:
-        print(f"VERDICT: GENERALIZES — {generalized}/{total} targets returned rows "
+
+    if failed:
+        print(f"{len(failed)}/{total} run(s) failed before the description was "
+              "tested, and are excluded from the verdict:")
+        for target, result in failed:
+            print(f"  {target['slug']:<14} {(result.error or 'no detail')[:90]}")
+        print()
+
+    if not tested:
+        # The mirror image of the no-targets guard: with every run failed, a
+        # confident "DOES NOT GENERALIZE" would report a refutation that no API
+        # call was ever made to earn.
+        print(f"VERDICT: INCONCLUSIVE — 0/{total} runs reached the page, so "
+              "nothing was learned about the description.")
+        print("→ fix the runs (auth, collector ID, target URLs) and re-run. "
+              "This is not evidence either way.")
+        return 1
+
+    tried = len(tested)
+    scope = f"{tried}/{total} run(s) that reached the page"
+    if generalized == tried:
+        print(f"VERDICT: GENERALIZES — {generalized}/{tried} targets returned rows "
               f"with title and URL on ≥90% of them, across "
-              f"{len(platforms)} platforms.")
+              f"{len({t.get('ats') or 'unknown' for t, _ in tested})} platforms "
+              f"({scope}).")
         print("→ one career collector covers every company. Skip the "
               "per-company fallback.")
         return 0
     if generalized:
-        print(f"VERDICT: PARTIAL — {generalized}/{total} targets clean "
-              f"across {len(platforms)} platforms.")
+        print(f"VERDICT: PARTIAL — {generalized}/{tried} targets clean ({scope}).")
         print("→ keep the generic collector for the platforms that work; build "
               "a separate collector per platform for the rest.")
         return 0
-    print(f"VERDICT: DOES NOT GENERALIZE — 0/{total} targets clean.")
+    print(f"VERDICT: DOES NOT GENERALIZE — 0/{tried} targets clean ({scope}).")
     print("→ fall back to per-platform collectors, chosen for ATS diversity.")
     return 1
 
