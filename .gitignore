@@ -24,3 +24,10 @@ node_modules/
 
 # planning notes — not part of the shipped project
 plan.md
+PROTOTYPES.md
+
+# in-flight snapshot reservations — never evidence, never committed
+data/snapshots/*.part
+
+# snapshot reservations — an in-flight or abandoned run, never evidence
+*.json.part
