@@ -24,6 +24,7 @@ from .bdata import (
     BdataError,
     RunResult,
     create_collector,
+    extract_errors,
     extract_rows,
     find_collectors,
     get_collector,
@@ -359,29 +360,62 @@ def cmd_show(args: argparse.Namespace) -> int:
     """Render a snapshot already on disk. Costs nothing, proves the archive."""
     path = Path(args.path)
     if not path.exists():
-        print(f"no such snapshot: {path}", file=sys.stderr)
+        _warn(f"no such snapshot: {path}")
         return 2
     try:
         payload = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
-        print(f"{path} is not valid JSON: {exc}", file=sys.stderr)
+        _warn(f"{path} is not valid JSON: {exc}")
         return 2
     except UnicodeDecodeError:
-        print(f"{path} is not text — snapshots are UTF-8 JSON", file=sys.stderr)
+        _warn(f"{path} is not text — snapshots are UTF-8 JSON")
         return 2
     except OSError as exc:
-        print(f"cannot read {path}: {exc.strerror}", file=sys.stderr)
+        _warn(f"cannot read {path}: {exc.strerror}")
         return 2
 
     rows = extract_rows(payload)
+    errors = extract_errors(payload)
     fixture = isinstance(payload, dict) and payload.get("_fixture") is True
     label = "FIXTURE (hand-written, not collector output)" if fixture else "snapshot"
-    print(f"{label} {DOT} {_rel(path)} {DOT} {len(rows)} rows")
+    tail = f" {DOT} {len(errors)} crawler error(s)" if errors else ""
+    print(f"{label} {DOT} {_rel(path)} {DOT} {len(rows)} rows{tail}")
     if isinstance(payload, dict) and payload.get("collector_id"):
         print(f"collector {payload['collector_id']}")
     print()
     print_table(rows, limit=args.limit)
+    print_crawler_errors(errors, rows)
     return 0
+
+
+def print_crawler_errors(
+    errors: list[dict[str, Any]], rows: list[dict[str, Any]]
+) -> None:
+    """Report the records that are Bright Data failures rather than listings.
+
+    Without this, a careers page with no open roles and a scrape that never
+    read the page both render as `(no rows)`. Downstream those two must not be
+    the same value: an empty page is a ghost signal that drives the score up,
+    while a failed scrape has to land as ``career_page_checked = 0``.
+    """
+    if not errors:
+        return
+    print()
+    print(f"  {len(errors)} record(s) are crawler errors, not listings:")
+    for err in errors[:5]:
+        source = err.get("input")
+        url = source.get("url") if isinstance(source, dict) else None
+        message = _clean(_scalar(err.get("error") or err.get("error_code")))
+        print(f"    {_clean(_scalar(url)) or '(no url)'}: {message[:120]}")
+    if len(errors) > 5:
+        print(f"    ... {len(errors) - 5} more")
+    if not rows:
+        print(
+            "  NOT an empty careers page — the collector never read it. "
+            "Do not score this as a missing listing."
+        )
+
+
 def cmd_description(args: argparse.Namespace) -> int:
     """Print a field description verbatim. Used by create_collectors.sh."""
     doc = load_collectors()
