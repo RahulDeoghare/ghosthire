@@ -43,6 +43,10 @@ DESCRIPTION_MAX_CHARS = 500
 SYNC_TIMEOUT_MIN = 25
 SYNC_TIMEOUT_MAX = 50
 
+# An in-flight snapshot carries this suffix until the run completes, so that
+# `data/snapshots/*.json` never matches a partial, empty or abandoned file.
+PART_SUFFIX = ".part"
+
 # Collector IDs are remote values that get written into a config file, so they
 # are validated against the documented shape before they touch disk.
 COLLECTOR_ID_RE = re.compile(r"^c_[a-z0-9]+$")
@@ -225,32 +229,96 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def snapshot_path(source: str, prefix: str = "") -> Path:
-    """A path that does not already exist.
+def reserve_snapshot(source: str, prefix: str = "") -> Path:
+    """Reserve a unique snapshot name; return the path to write to.
 
-    Timestamps are second-granular and two runs can finish inside one second,
-    so a bare stamp silently overwrites the earlier run's evidence — and the
-    archive is the whole provenance argument. Collisions get a suffix.
+    The returned path ends in ``.json.part``. It is a *reservation*, not a
+    snapshot: call `publish_snapshot` once the CLI has put real bytes in it, or
+    `discard_snapshot` when the run produced nothing.
+
+    Two properties this buys, both load-bearing:
+
+    1. ``data/snapshots/*.json`` only ever matches complete files. Rebuilding
+       the database from that glob without spending a credit is the provenance
+       promise, and a concurrent reader that hits a half-written or empty file
+       breaks it.
+    2. Names are unique. Timestamps are second-granular and two runs can finish
+       inside one second, so a bare stamp silently overwrites the earlier run's
+       evidence. Collisions get a suffix.
     """
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     slug = re.sub(r"[^a-z0-9]+", "-", source.lower()).strip("-")
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    candidate = SNAPSHOT_DIR / f"{stamp}_{prefix}{slug}.json"
-    suffix = 2
-    while True:
+    base = f"{stamp}_{prefix}{slug}"
+    for n in range(1, 1000):
+        stem = base if n == 1 else f"{base}_{n}"
+        # The published name is checked too, so a reservation can never later
+        # collide with a snapshot that is already on disk.
+        if (SNAPSHOT_DIR / f"{stem}.json").exists():
+            continue
         try:
-            # Reserve the name by creating it. Returning a name that nothing has
-            # written yet leaves a window where a second call picks the same one
-            # and the first run's evidence is overwritten.
-            candidate.touch(exist_ok=False)
-            return candidate
+            part = SNAPSHOT_DIR / f"{stem}.json{PART_SUFFIX}"
+            part.touch(exist_ok=False)
+            return part
         except FileExistsError:
-            candidate = SNAPSHOT_DIR / f"{stamp}_{prefix}{slug}_{suffix}.json"
-            suffix += 1
-            if suffix > 999:
-                raise BdataError(
-                    f"cannot find a free snapshot name for {slug}"
-                ) from None
+            continue
+    raise BdataError(f"cannot find a free snapshot name for {slug}")
+
+
+def published_path(part: Path) -> Path:
+    """The name a reservation takes once it holds real bytes."""
+    if part.name.endswith(PART_SUFFIX):
+        return part.with_name(part.name[: -len(PART_SUFFIX)])
+    return part
+
+
+def publish_snapshot(part: Path) -> Path | None:
+    """Promote a written reservation to its final name, atomically.
+
+    Returns ``None`` when there is nothing worth keeping. An empty file is not
+    evidence, and a caller that reports its path is claiming an archive it does
+    not have — which is worst on the timeout path, where the run was also the
+    most expensive one of the night.
+    """
+    try:
+        if not part.exists() or part.stat().st_size == 0:
+            discard_snapshot(part)
+            return None
+        final = published_path(part)
+        os.replace(part, final)
+        return final
+    except OSError:
+        return None
+
+
+def discard_snapshot(part: Path) -> None:
+    """Drop a reservation that never received data."""
+    try:
+        part.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _has_bytes(path: Path) -> bool:
+    try:
+        return path.exists() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _reservation_for(out_path: Path | None, source: str, prefix: str = "") -> Path:
+    """The ``.part`` path to write to for this run.
+
+    An explicit ``out_path`` names the *published* snapshot; the CLI still
+    writes beside it under ``.part`` so the same guarantee holds for callers
+    that choose their own filename.
+    """
+    if out_path is None:
+        return reserve_snapshot(source, prefix=prefix)
+    part = Path(str(out_path) + PART_SUFFIX)
+    part.parent.mkdir(parents=True, exist_ok=True)
+    part.touch(exist_ok=True)
+    return part
 
 
 def cli_available() -> bool:
@@ -294,6 +362,10 @@ def _invoke(
     def _tee() -> None:
         assert proc.stderr is not None
         for line in proc.stderr:
+            # Flush stdout first: piping the command makes stdout block-
+            # buffered while stderr stays unbuffered, so poll output would
+            # otherwise land above the line announcing the run it belongs to.
+            sys.stdout.flush()
             sys.stderr.write(line)
             sys.stderr.flush()
             captured.append(line)
@@ -381,6 +453,9 @@ def run_collector(
     Never raises on a failed *scrape* — the caller records the failure. Only
     raises when the CLI itself is unusable (missing binary, hard timeout).
     """
+    # ---- Every argument check runs before a reservation is taken. Allocating
+    # the snapshot name first left an empty *.json on disk for each rejected
+    # call — a file that archives nothing while looking exactly like evidence.
     if not collector_id:
         raise BdataError(
             f"no collector_id configured for source {source!r}. "
@@ -388,18 +463,18 @@ def run_collector(
         )
     if not urls:
         raise BdataError(f"no target URLs for source {source!r}")
+    if sync and len(urls) > 1:
+        # The CLI rejects --sync with --urls, but we pass a positional URL, so
+        # it would never see the other targets: they would be dropped in
+        # silence and the snapshot would under-report what it covers.
+        raise BdataError(
+            f"--sync takes a single URL; {len(urls)} configured for "
+            f"{source!r}. Drop --sync to run them as a batch."
+        )
 
-    out_path = out_path or snapshot_path(source)
+    part = _reservation_for(out_path, source)
     cmd = [BDATA_BIN, "scraper", "run", collector_id]
     if sync:
-        if len(urls) > 1:
-            # The CLI rejects --sync with --urls, but we pass a positional URL,
-            # so it would never see the other targets: they would be dropped in
-            # silence and the snapshot would under-report what it covers.
-            raise BdataError(
-                f"--sync takes a single URL; {len(urls)} configured for "
-                f"{source!r}. Drop --sync to run them as a batch."
-            )
         cap = min(max(timeout, SYNC_TIMEOUT_MIN), SYNC_TIMEOUT_MAX)
         # --timeout is load-bearing even here. On a realtime page-limit error
         # the CLI silently falls back to batch polling, and batch reads its cap
@@ -410,7 +485,7 @@ def run_collector(
     else:
         cmd += ["--urls", ",".join(urls), "--timeout", str(timeout)]
         wall = timeout + 60
-    cmd += ["--json", "--pretty", "-o", str(out_path)]
+    cmd += ["--json", "--pretty", "-o", str(part)]
 
     started_at = _utcnow()
     clock = time.monotonic()
@@ -422,13 +497,16 @@ def run_collector(
         proc = _invoke(cmd, timeout=wall, stream=stream)
     except BdataError as exc:
         if "timed out" not in str(exc):
+            discard_snapshot(part)
             raise
         return RunResult(
             collector_id=collector_id,
             source=source,
             target_urls=urls,
             status="failed",
-            snapshot_path=out_path if out_path.exists() else None,
+            # Keep whatever the CLI managed to write; report no path at all
+            # when it wrote nothing, rather than pointing at an empty file.
+            snapshot_path=publish_snapshot(part),
             started_at=started_at,
             completed_at=_utcnow(),
             duration_s=round(time.monotonic() - clock, 1),
@@ -436,17 +514,14 @@ def run_collector(
         )
     duration = round(time.monotonic() - clock, 1)
 
-    wrote_output = out_path.exists() and out_path.stat().st_size > 0
-    payload = _read_json(out_path) if wrote_output else None
+    payload = _read_json(part) if _has_bytes(part) else None
     if payload is None and proc.stdout.strip():
         try:
             payload = json.loads(proc.stdout)
-            out_path.write_text(json.dumps(payload, indent=2))
-            wrote_output = True
+            part.write_text(json.dumps(payload, indent=2))
         except json.JSONDecodeError:
             payload = None
-    if not wrote_output and out_path.exists() and out_path.stat().st_size == 0:
-        out_path.unlink()  # drop the reservation; an empty file is not evidence
+    snapshot = publish_snapshot(part)
 
     rows = extract_rows(payload)
     crawler_errors = extract_errors(payload)
@@ -478,7 +553,7 @@ def run_collector(
         status=status,
         rows=rows,
         crawler_errors=crawler_errors,
-        snapshot_path=out_path if wrote_output else None,
+        snapshot_path=snapshot,
         started_at=started_at,
         completed_at=_utcnow(),
         duration_s=duration,
@@ -506,39 +581,43 @@ def create_collector(
             f"{DESCRIPTION_MAX_CHARS}-char cap"
         )
 
-    out_path = out_path or snapshot_path(name or "collector", prefix="create_")
+    part = _reservation_for(out_path, name or "collector", prefix="create_")
     cmd = [BDATA_BIN, "scraper", "create", url, description]
     if name:
         cmd += ["--name", name]
     cmd += [
-        "--json", "--pretty", "-o", str(out_path),
+        "--json", "--pretty", "-o", str(part),
         "--timeout", str(timeout), "--max-retries", str(max_retries),
     ]
 
     # ---- D14: generation takes 5-10 minutes and the CLI reports each step on
     # stderr. Capturing that turns the longest operation in the project into a
     # silent hour, which is exactly what streaming exists to prevent.
-    mtime_before = out_path.stat().st_mtime if out_path.exists() else None
-    proc = _invoke(cmd, timeout=timeout * (max_retries + 1) + 600, stream=True)
-    wrote_output = out_path.exists() and out_path.stat().st_mtime != mtime_before
-    payload = _read_json(out_path) if wrote_output else None
+    try:
+        proc = _invoke(cmd, timeout=timeout * (max_retries + 1) + 600, stream=True)
+    except BdataError:
+        discard_snapshot(part)
+        raise
+    payload = _read_json(part) if _has_bytes(part) else None
     if payload is None and proc.stdout.strip():
         try:
             payload = json.loads(proc.stdout)
+            part.write_text(json.dumps(payload, indent=2))
         except json.JSONDecodeError:
             payload = None
+    snapshot = publish_snapshot(part)
 
     if not isinstance(payload, dict):
         error = (proc.stderr or proc.stdout or "").strip()[:2000] or "no output"
         if _looks_unauthenticated(error):
             error = _AUTH_HINT
-        return CreateResult(None, name, "failed", out_path if out_path.exists() else None, {}, error)
+        return CreateResult(None, name, "failed", snapshot, {}, error)
 
     return CreateResult(
         collector_id=payload.get("collector_id"),
         name=payload.get("name") or name,
         status=payload.get("status") or ("created" if payload.get("collector_id") else "unknown"),
-        snapshot_path=out_path if out_path.exists() else None,
+        snapshot_path=snapshot,
         raw=payload,
         error=None,
     )
