@@ -1,0 +1,245 @@
+# Bright Data Scraper Studio collectors.
+#
+# `collector_id` is null until scrapers/create_collectors.sh runs `bdata scraper
+# create` and writes the returned c_* ID back into this file. Every row the
+# project stores carries the ID of the collector that produced it, so any
+# number in the dashboard traces back to one entry here.
+#
+# The `descriptions` block below is the plain-English instruction handed to
+# Scraper Studio. It is a deliverable in its own right: one description is run
+# against several unrelated ATS platforms, and the same clean JSON comes back.
+# `bdata scraper create` caps a description at 500 characters.
+
+version: 1
+
+descriptions:
+  # ~430 chars.
+  board_internshala: |
+    Extract every job listing shown on this page. For each listing return:
+    - company_name: the hiring company exactly as written
+    - job_title: the role title exactly as written
+    - location: city, or "Remote" if the role is remote
+    - date_posted: the posting date exactly as shown, e.g. "3 weeks ago"
+    - salary_range: the stipend or salary as shown, otherwise null
+    - job_url: absolute URL to the full listing
+    If listings are paginated or behind a "load more" control, load them all.
+
+  # ~450 chars. Identical to board_internshala except for the last line.
+  #
+  # WHY IT EXISTS — VERIFIED 2026-08-21: the "load them all" instruction above
+  # makes the generated collector walk every page of a board. On Internshala
+  # that is an unbounded crawl: `scraper run` exceeded the realtime page limit
+  # immediately, fell back to batch, and timed out at both 110s and 660s
+  # without returning a row — on the full /jobs/ URL *and* on a narrower
+  # /jobs/computer-science-jobs/ one, which is what rules out the URL as the
+  # cause. §7 of the build plan budgets ~10 pages per board sweep, not the
+  # whole site, so the bound below is what the plan assumed all along.
+  board_internshala_bounded: |
+    Extract every job listing shown on this page. For each listing return:
+    - company_name: the hiring company exactly as written
+    - job_title: the role title exactly as written
+    - location: city, or "Remote" if the role is remote
+    - date_posted: the posting date exactly as shown, e.g. "3 weeks ago"
+    - salary_range: the stipend or salary as shown, otherwise null
+    - job_url: absolute URL to the full listing
+    Read only the first page of results. Do not paginate or click "load more".
+
+  # ~340 chars. Verbatim from the build plan: this exact text is what the
+  # cross-platform extraction claim rests on. Do not tune it per company.
+  career_generic: |
+    Extract every open job listing on this page. For each listing return:
+    - job_title: the role title as written
+    - location: city, or "Remote" if remote
+    - department: team or function if shown, otherwise null
+    - job_url: absolute URL to the full job description
+    If listings are paginated or behind a "show more" control, load them all.
+
+collectors:
+  # --- job boards -------------------------------------------------------
+  - key: board_internshala_jobs
+    kind: board
+    source: internshala
+    name: gh-board-internshala-jobs
+    collector_id: c_mt1senswibym6o5va
+    description_ref: board_internshala
+    targets:
+      - url: https://internshala.com/jobs/
+        note: fresher and entry-level jobs
+
+  # The bounded rebuild of board_internshala_jobs. Same target, same fields,
+  # one different sentence about pagination. Kept as a separate key rather than
+  # a --force re-create so the slow collector's ID and its timeout evidence
+  # both survive: "the description controls the crawl" is a finding, and
+  # deleting the losing half of a comparison is how findings get lost.
+  - key: board_internshala_fast
+    kind: board
+    source: internshala
+    name: gh-board-internshala-jobs-fast
+    collector_id: null
+    description_ref: board_internshala_bounded
+    targets:
+      - url: https://internshala.com/jobs/
+        note: fresher and entry-level jobs, first page only
+
+  - key: board_internshala_intern
+    kind: board
+    source: internshala
+    name: gh-board-internshala-internships
+    collector_id: null
+    description_ref: board_internshala
+    targets:
+      - url: https://internshala.com/internships/
+        note: internships
+
+  # Secondary board. Target is decided on the day by `bdata pipelines list`:
+  # the first candidate that is NOT already a pre-built Bright Data scraper and
+  # renders listings without a login wall. Candidates, in order: Naukri,
+  # Foundit, TimesJobs. Left unset until that check runs.
+  - key: board_secondary
+    kind: board
+    source: secondary
+    name: gh-board-secondary
+    collector_id: null
+    description_ref: board_internshala
+    enabled: false
+    targets: []
+
+  # --- career pages -----------------------------------------------------
+  # ONE collector, one description, N unrelated ATS platforms. If this
+  # generalizes, it replaces eight per-company collectors and is the strongest
+  # thing in the project. `ats` values are UNVERIFIED until the DOM is
+  # inspected; they are a guess recorded so the guess can be checked.
+  - key: career_generic
+    kind: career
+    source: career_page
+    name: gh-career-generic
+    collector_id: c_mt1s6jit3zcyg7dlw
+    description_ref: career_generic
+    # First attempt, 2026-08-20: built against https://razorpay.com/jobs/ and
+    # produced c_mt1ruaer190xqv1oee. That URL is a marketing landing page with
+    # no listings on it, so the generated collector learned "follow the outbound
+    # link to the real board" instead of "extract listings". It returned the
+    # Greenhouse URL for Razorpay and `navigate: url is required` everywhere
+    # else. Snapshots kept in data/snapshots/ as evidence. The lesson is in the
+    # `url` values below: every one of them now points at a page that actually
+    # lists roles, not at the page a human clicks first.
+    targets:
+      # `observed_by` records HOW a claim was checked, because the two are not
+      # equally strong: `http_fetch` means a person read the page and counted;
+      # `collector` means this collector actually extracted that many rows, and
+      # a snapshot in data/snapshots/ backs it. Never write `collector` without
+      # the snapshot to prove it.
+      - slug: razorpay
+        company: Razorpay
+        url: https://job-boards.greenhouse.io/razorpaysoftwareprivatelimited
+        landing_url: https://razorpay.com/jobs/
+        ats: greenhouse
+        observed_by: collector
+        observed_on: 2026-08-21
+        roles_seen: 25
+        evidence: data/snapshots/20260821T183126Z_career-razorpay.json
+        # 24 roles on 2026-08-20 (20260820T172031Z_fork-razorpay.json), 25 on
+        # 2026-08-21. Both snapshots are kept: a board that changes between
+        # runs is the effect this project exists to measure.
+      - slug: postman
+        company: Postman
+        url: https://job-boards.greenhouse.io/postman
+        landing_url: https://www.postman.com/company/careers/
+        ats: greenhouse
+        observed_by: http_fetch
+        observed_on: 2026-08-20
+        roles_seen: 111
+        evidence: null
+      - slug: freshworks
+        company: Freshworks
+        url: https://careers.smartrecruiters.com/Freshworks
+        landing_url: https://www.freshworks.com/company/careers/
+        ats: smartrecruiters
+        observed_by: http_fetch
+        observed_on: 2026-08-20
+        roles_seen: 54
+        # This collector returned zero rows here (Greenhouse-shaped selectors on
+        # a SmartRecruiters DOM). The 54 roles are on the page; we cannot yet
+        # extract them. Both facts are true and neither cancels the other.
+        evidence: null
+      # Real boards, but JS-rendered: a plain HTTP fetch returns an empty
+      # shell. Scraper Studio renders in a browser, so these are expected to
+      # work where a naive fetch does not — that is a claim to test, not to
+      # assume, so they are marked UNVERIFIED until a collector run proves it.
+      - slug: browserstack
+        company: BrowserStack
+        url: https://browserstack.wd3.myworkdayjobs.com/External
+        landing_url: https://www.browserstack.com/careers
+        ats: workday
+        # The fork run reached this page and extracted nothing — an empty
+        # array, not a crawler error. `roles_seen: 0` is what THIS collector
+        # saw, not a claim that Workday has no open roles; the Greenhouse-shaped
+        # selectors simply do not fit a Workday DOM. A Workday-specific
+        # collector is the fix, per the §0.3 fallback.
+        observed_by: collector
+        observed_on: 2026-08-20
+        roles_seen: 0
+        evidence: data/snapshots/20260820T172040Z_fork-browserstack.json
+      - slug: zerodha
+        company: Zerodha
+        url: https://careers.zerodha.com/
+        landing_url: https://zerodha.com/careers/
+        ats: custom
+        observed_by: null
+        observed_on: null
+        roles_seen: null
+        evidence: null
+      - slug: cred
+        # Career page and job board are the same URL here — a single-page app.
+        # Flagged so the landing-page test can distinguish this from an
+        # unchecked target; UNVERIFIED until a collector run says otherwise.
+        url_is_landing: true
+        company: CRED
+        url: https://careers.cred.club/
+        landing_url: https://careers.cred.club/
+        ats: custom
+        observed_by: null
+        observed_on: null
+        roles_seen: null
+        evidence: null
+      - slug: swiggy
+        # Career page and job board are the same URL here — a single-page app.
+        # Flagged so the landing-page test can distinguish this from an
+        # unchecked target; UNVERIFIED until a collector run says otherwise.
+        url_is_landing: true
+        company: Swiggy
+        url: https://careers.swiggy.com/
+        landing_url: https://careers.swiggy.com/
+        ats: custom
+        observed_by: null
+        observed_on: null
+        roles_seen: null
+        evidence: null
+      # Meesho refuses plain fetches (403) on both the careers page and the
+      # Lever board guess. Left in as a target because the unblocker zone is
+      # exactly the tool for this, but the ATS is a guess.
+      - slug: meesho
+        company: Meesho
+        url: https://jobs.lever.co/meesho
+        landing_url: https://meesho.io/careers
+        ats: lever
+        observed_by: null
+        observed_on: null
+        roles_seen: null
+        evidence: null
+
+  # --- self-healing demo ------------------------------------------------
+  # Points at a static mirror career page we control, so the DOM can be broken
+  # on purpose and `bdata scraper heal` can fix it on camera. Never pointed at
+  # a real company's site.
+  - key: heal_demo
+    kind: heal
+    source: heal_demo
+    name: gh-heal-demo
+    collector_id: null
+    description_ref: career_generic
+    enabled: false
+    targets: []
+
+# Reserve companies, if any of the eight above are JS-gated, empty, or behind a
+# login: Flipkart, Zomato, PhonePe, Groww, Lenskart, Unacademy, Myntra, ShareChat.
