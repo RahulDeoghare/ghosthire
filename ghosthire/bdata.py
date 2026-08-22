@@ -613,10 +613,28 @@ def create_collector(
             error = _AUTH_HINT
         return CreateResult(None, name, "failed", snapshot, {}, error)
 
+    collector_id = payload.get("collector_id")
+    status = payload.get("status") or ("created" if collector_id else "unknown")
+    if not collector_id:
+        # A well-formed envelope carrying no ID is the expensive case: ten
+        # minutes and a charge already spent. Saying so beats the caller
+        # printing this result's `error` and getting the word "None".
+        detail = payload.get("error") or payload.get("message")
+        error = (
+            f"generation finished with status {status!r} but returned no "
+            "collector_id"
+        )
+        if detail:
+            error += f": {detail}"
+        if snapshot:
+            error += f" — full response in {snapshot}"
+        return CreateResult(None, payload.get("name") or name, status,
+                            snapshot, payload, error)
+
     return CreateResult(
-        collector_id=payload.get("collector_id"),
+        collector_id=collector_id,
         name=payload.get("name") or name,
-        status=payload.get("status") or ("created" if payload.get("collector_id") else "unknown"),
+        status=status,
         snapshot_path=snapshot,
         raw=payload,
         error=None,

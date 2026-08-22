@@ -440,7 +440,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     targets = collector.get("targets") or []
     url = args.url or (targets[0]["url"] if targets else None)
     if not url:
-        print(f"{args.key} has no target URL to build against", file=sys.stderr)
+        _warn(f"{args.key} has no target URL to build against")
         return 2
 
     print(
@@ -454,10 +454,19 @@ def cmd_create(args: argparse.Namespace) -> int:
         name=collector.get("name"),
     )
     if not result.collector_id:
-        print(f"create failed: {result.error}", file=sys.stderr)
+        _warn(f"create failed: {_clean(_scalar(result.error)) or 'no detail'}")
+        if result.snapshot_path:
+            _warn(f"  response archived at {_rel(result.snapshot_path)}")
         return 1
 
-    print(f"collector {result.collector_id} {DOT} {result.name} {DOT} {result.status}")
+    # `collector_id` is validated by set_collector_id, but `name` and `status`
+    # are free-form remote strings that reach the terminal unchecked; pick()
+    # scrubs row values for exactly this reason and the create path must too.
+    print(
+        f"collector {result.collector_id} {DOT} "
+        f"{_clean(_scalar(result.name)) or '(unnamed)'} {DOT} "
+        f"{_clean(_scalar(result.status)) or 'unknown'}"
+    )
     print(f"→ {_rel(result.snapshot_path)}")
     set_collector_id(args.key, result.collector_id)
     print(f"wrote collector_id into scrapers/collectors.yaml under {args.key}")
