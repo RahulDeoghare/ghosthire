@@ -424,7 +424,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     # are free-form remote strings that reach the terminal unchecked; pick()
     # scrubs row values for exactly this reason and the create path must too.
     print(
-        f"collector {result.collector_id} {DOT} "
+        f"collector {_clean(_scalar(result.collector_id))} {DOT} "
         f"{_clean(_scalar(result.name)) or '(unnamed)'} {DOT} "
         f"{_clean(_scalar(result.status)) or 'unknown'}"
     )

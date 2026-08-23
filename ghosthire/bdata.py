@@ -367,7 +367,13 @@ def _invoke(
         text=True, errors="replace", bufsize=1,
     )
     captured: list[str] = []
+    stdout_chunks: list[str] = []
 
+    # ---- Each pipe gets exactly ONE reader. `communicate()` drains stdout
+    # *and* stderr, so calling it while this thread also reads stderr put two
+    # readers on the same pipe and the lines were split between them at random
+    # — measured at 29/30 and 20/30 captured across runs. stdout is read on its
+    # own thread so the wait below can still enforce the timeout.
     def _tee() -> None:
         assert proc.stderr is not None
         for line in proc.stderr:
@@ -379,19 +385,34 @@ def _invoke(
             sys.stderr.flush()
             captured.append(line)
 
+    def _drain_stdout() -> None:
+        assert proc.stdout is not None
+        for chunk in proc.stdout:
+            stdout_chunks.append(chunk)
+
     pump = threading.Thread(target=_tee, daemon=True)
+    drain = threading.Thread(target=_drain_stdout, daemon=True)
     pump.start()
+    drain.start()
     try:
-        stdout, _ = proc.communicate(timeout=timeout)
+        proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         proc.kill()
-        proc.communicate()
+        proc.wait()
         pump.join(timeout=5)
+        drain.join(timeout=5)
         raise BdataError(
             f"`{' '.join(cmd[:4])}` timed out after {timeout}s"
         ) from exc
-    pump.join(timeout=5)
-    return subprocess.CompletedProcess(cmd, proc.returncode, stdout or "", "".join(captured))
+    finally:
+        pump.join(timeout=5)
+        drain.join(timeout=5)
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
+    return subprocess.CompletedProcess(
+        cmd, proc.returncode, "".join(stdout_chunks), "".join(captured)
+    )
 
 
 def _looks_unauthenticated(text: str) -> bool:
