@@ -13,7 +13,23 @@
 version: 1
 
 descriptions:
-  # ~430 chars.
+  # ~440 chars.
+  #
+  # DRIFT NOTICE — the deployed collector c_mt1senswibym6o5va no longer matches
+  # the text it was created from. It was built on 2026-08-20 from a version of
+  # this description ending "If listings are paginated or behind a 'load more'
+  # control, load them all." That instruction made it walk the whole board: three
+  # runs timed out at 110s, 660s and 1860s without returning a row. Two
+  # `bdata scraper heal` passes repaired it in place (transcripts in data/heal/):
+  # heal #1 bounded the pagination, heal #2 fixed a row boundary that was
+  # concatenating four listings into one record.
+  #
+  # The last line below has been rewritten to describe what is actually
+  # deployed, so re-running create_collectors.sh rebuilds the working collector
+  # rather than the one that times out. The healed collector cannot be
+  # reproduced byte-for-byte from this text — heal edits the generated code, not
+  # the description — so treat this as the intent, and data/heal/ as the record
+  # of how the deployed version got there.
   board_internshala: |
     Extract every job listing shown on this page. For each listing return:
     - company_name: the hiring company exactly as written
@@ -22,7 +38,7 @@ descriptions:
     - date_posted: the posting date exactly as shown, e.g. "3 weeks ago"
     - salary_range: the stipend or salary as shown, otherwise null
     - job_url: absolute URL to the full listing
-    If listings are paginated or behind a "load more" control, load them all.
+    Read only the first page of results. Do not paginate or click "load more".
 
   # ~450 chars. Identical to board_internshala except for the last line.
   #
@@ -80,6 +96,63 @@ collectors:
     targets:
       - url: https://internshala.com/jobs/
         note: fresher and entry-level jobs, first page only
+
+  # THE PAIRING. Scraping the board's front page and the careers pages of eight
+  # companies produced two disjoint populations: 46 board employers, 8 career
+  # targets, zero overlap. The matcher had nothing to match, so every listing
+  # would have scored `career_page_checked = 0` and the product would have
+  # rendered 50 rows of "not assessed".
+  #
+  # The fix is to scrape the board PER COMPANY, for the companies whose careers
+  # page we can actually read. Internshala exposes a company filter at
+  # /jobs/keywords-<name>, so overlap is created by construction instead of
+  # hoped for. Same collector ID as the front-page sweep — no new collector,
+  # which matters because the account's trial slots are exhausted.
+  #
+  # VERIFIED 2026-08-23: keywords-razorpay returned 3 Razorpay listings in 11.5s
+  # (data/snapshots/20260823T070130Z_board-razorpay.json). Against the 25 roles
+  # on Razorpay's Greenhouse board, one matched at 100 and two did not — the
+  # first real ghost candidates this project has produced.
+  - key: board_company
+    kind: board
+    source: board_company
+    name: gh-board-internshala-jobs
+    collector_id: c_mt1senswibym6o5va
+    description_ref: board_internshala
+    targets:
+      - slug: razorpay
+        company: Razorpay
+        url: https://internshala.com/jobs/keywords-razorpay
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 3
+        evidence: data/snapshots/20260823T070130Z_board-razorpay.json
+      # Unverified: these have career pages configured but their board presence
+      # has not been checked with a collector run. A plain fetch of the filtered
+      # page showed listings for swiggy and lenskart and none for the rest, but
+      # a fetch is not a collector run and this file does not record guesses as
+      # observations.
+      - slug: swiggy
+        company: Swiggy
+        url: https://internshala.com/jobs/keywords-swiggy
+        observed_by: null
+        observed_on: null
+        rows_seen: null
+        evidence: null
+      - slug: freshworks
+        company: Freshworks
+        url: https://internshala.com/jobs/keywords-freshworks
+        observed_by: null
+        observed_on: null
+        rows_seen: null
+        evidence: null
+      - slug: postman
+        company: Postman
+        url: https://internshala.com/jobs/keywords-postman
+        observed_by: null
+        observed_on: null
+        rows_seen: null
+        evidence: null
 
   - key: board_internshala_intern
     kind: board
