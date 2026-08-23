@@ -149,6 +149,78 @@ collectors:
         observed_on: null
         rows_seen: null
         evidence: null
+      # --- companies that genuinely post here -----------------------------
+      - slug: nobroker
+        company: NoBroker
+        url: https://internshala.com/jobs/keywords-nobroker
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 8
+        # All eight, once "NoBroker.com" and "NoBroker Support" stopped being
+        # read as different companies.
+        rows_at_company: 8
+        evidence: data/snapshots/20260823T130724Z_board-company-nobroker.json
+      - slug: swiggy
+        company: Swiggy
+        url: https://internshala.com/jobs/keywords-swiggy
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 5
+        rows_at_company: 5
+        evidence: data/snapshots/20260823T130734Z_board-company-swiggy.json
+      - slug: lenskart
+        company: Lenskart
+        url: https://internshala.com/jobs/keywords-lenskart
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 2
+        rows_at_company: 2
+        evidence: data/snapshots/20260823T130746Z_board-company-lenskart.json
+      - slug: groww
+        company: Groww
+        url: https://internshala.com/jobs/keywords-groww
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 1
+        rows_at_company: 1
+        evidence: data/snapshots/20260823T130619Z_board-company-groww.json
+      - slug: zomato
+        company: Zomato
+        url: https://internshala.com/jobs/keywords-zomato
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 1
+        rows_at_company: 1
+        evidence: data/snapshots/20260823T130811Z_board-company-zomato.json
+      # --- keywords that are ordinary English, and behave like it ---------
+      # These four return rows because the word appears in a job description,
+      # not because the company posted. "cred" matches credit, credentials,
+      # accredited. Kept as configured targets precisely because the measured
+      # 0-of-N is the evidence for why ingest guards on company at all.
+      - slug: cred
+        company: CRED
+        url: https://internshala.com/jobs/keywords-cred
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 29
+        rows_at_company: 0
+        evidence: data/snapshots/20260823T130609Z_board-company-cred.json
+      - slug: paytm
+        company: Paytm
+        url: https://internshala.com/jobs/keywords-paytm
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 1
+        rows_at_company: 0
+        evidence: data/snapshots/20260823T130752Z_board-company-paytm.json
+      - slug: meesho
+        company: Meesho
+        url: https://internshala.com/jobs/keywords-meesho
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 1
+        rows_at_company: 0
+        evidence: data/snapshots/20260823T130803Z_board-company-meesho.json
       - slug: postman
         company: Postman
         url: https://internshala.com/jobs/keywords-postman
@@ -233,10 +305,22 @@ collectors:
         url: https://job-boards.greenhouse.io/postman
         landing_url: https://www.postman.com/company/careers/
         ats: greenhouse
-        observed_by: http_fetch
-        observed_on: 2026-08-20
-        roles_seen: 111
-        evidence: null
+        observed_by: collector
+        observed_on: 2026-08-23
+        roles_seen: 50
+        evidence: data/snapshots/20260823T130540Z_career-postman.json
+      # Greenhouse, and it extracts. Added 2026-08-23 after a survey of 26
+      # Indian tech companies found only these few with a public Greenhouse
+      # board — most use custom career portals this collector cannot read yet.
+      - slug: groww
+        company: Groww
+        url: https://job-boards.greenhouse.io/groww
+        landing_url: https://groww.in/careers
+        ats: greenhouse
+        observed_by: collector
+        observed_on: 2026-08-23
+        roles_seen: 5
+        evidence: data/snapshots/20260823T130226Z_career-groww.json
       - slug: freshworks
         company: Freshworks
         url: https://careers.smartrecruiters.com/Freshworks
@@ -277,18 +361,20 @@ collectors:
         roles_seen: null
         evidence: null
       - slug: cred
-        # Career page and job board are the same URL here — a single-page app.
-        # Flagged so the landing-page test can distinguish this from an
-        # unchecked target; UNVERIFIED until a collector run says otherwise.
-        url_is_landing: true
         company: CRED
-        url: https://careers.cred.club/
+        # The real board is Lever, found 2026-08-23 — careers.cred.club is the
+        # marketing page in front of it, which is the landing-page trap again.
+        url: https://jobs.lever.co/cred
         landing_url: https://careers.cred.club/
-        ats: custom
-        observed_by: null
-        observed_on: null
-        roles_seen: null
-        evidence: null
+        ats: lever
+        # Zero rows. Lever is the FOURTH platform this description has been
+        # tried on: Greenhouse works, SmartRecruiters, Workday and now Lever
+        # all return an empty array rather than an error. The page has ~26
+        # roles on it; we cannot extract them. Both facts are true.
+        observed_by: collector
+        observed_on: 2026-08-23
+        roles_seen: 0
+        evidence: data/snapshots/20260823T130205Z_career-cred.json
       - slug: swiggy
         # Career page and job board are the same URL here — a single-page app.
         # Flagged so the landing-page test can distinguish this from an

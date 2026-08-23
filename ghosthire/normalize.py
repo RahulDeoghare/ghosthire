@@ -72,17 +72,41 @@ def normalize_company(name: str | None) -> str:
     return " ".join(kept or words)
 
 
+# Tokens that may trail a company name without making it a different company.
+# Deliberately short and boring: every addition here widens what counts as the
+# same employer, and the cost of getting that wrong is an accusation aimed at
+# the wrong company.
+BRAND_SUFFIXES = frozenset({
+    "com", "in", "io", "support", "careers", "jobs", "hiring", "recruitment",
+    "official", "hq", "team", "india", "bharat",
+})
+
+
 def company_matches(row_company: str | None, target_company: str | None) -> bool:
     """Is this row actually *at* the target company?
 
-    Exact on the normalized form, deliberately — §3A.4 forbids fuzzing the
-    company, and here the cost of a loose match is a public accusation against
-    whichever company the row really belongs to. A miss drops one row; a false
-    accept invents an employer.
+    Never fuzzy — §3A.4 forbids fuzzing the company, and the cost of a loose
+    match here is a public accusation against whichever company the row really
+    belongs to. A miss drops one row; a false accept invents an employer.
+
+    Exact on the normalized form, with one narrow exception: a trailing token
+    that carries no brand of its own. "NoBroker.com" and "NoBroker Support" are
+    NoBroker; dropping them lost real listings. "CRED Avenue" is *not* CRED —
+    it is a different company — so a trailing token that is itself brand-like
+    keeps the row rejected. That asymmetry is the whole rule.
     """
     if not row_company or not target_company:
         return False
-    return normalize_company(row_company) == normalize_company(target_company)
+
+    row = normalize_company(row_company).split()
+    target = normalize_company(target_company).split()
+    if not row or not target:
+        return False
+    if row == target:
+        return True
+    if len(row) <= len(target) or row[: len(target)] != target:
+        return False
+    return all(token in BRAND_SUFFIXES for token in row[len(target):])
 
 
 # --------------------------------------------------------------------------

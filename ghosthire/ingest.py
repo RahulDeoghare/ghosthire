@@ -110,7 +110,13 @@ def ingest_rows(
                 result.rejected_company += 1
                 result.rejected_names.append(raw_company)
                 continue
-            name = raw_company
+            # Once the guard has confirmed the row is at the target, file it
+            # under the target's canonical name. The board writes the same
+            # employer three ways — "NoBroker.com", "NoBroker Support", the
+            # full legal name — which normalize differently and would be stored
+            # as three companies, none of them matching the careers page we
+            # hold for NoBroker. The raw string stays in raw_json.
+            name = company if company else raw_company
 
         title = pick(row, "title")
         if not name or not title:

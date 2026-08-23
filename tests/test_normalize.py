@@ -95,6 +95,28 @@ def test_guard_rejects_full_text_search_false_positives(row_company):
     assert not company_matches(row_company, "Postman")
 
 
+@pytest.mark.parametrize("row", ["NoBroker.com", "NoBroker Support", "NoBroker India"])
+def test_a_brandless_trailing_token_is_still_the_same_company(row):
+    """Rejecting these lost genuine NoBroker listings from a live board run."""
+    assert company_matches(row, "NoBroker")
+
+
+@pytest.mark.parametrize("row", ["CRED Avenue", "CredAvenue", "Accredian",
+                                 "AMOLAKSHAYA TRADE AND CREDIT Private Limited"])
+def test_a_trailing_token_that_carries_a_brand_is_a_different_company(row):
+    """CredAvenue is not CRED. This is the asymmetry the exception turns on:
+    a trailing token with no brand of its own is tolerated, one that names a
+    different business is not. All four of these came back from a live search
+    for the keyword 'cred'."""
+    assert not company_matches(row, "CRED")
+
+
+def test_a_distinct_product_line_is_not_folded_into_the_parent():
+    """'Payment Gateway' names a business, not a decoration, so it stays out
+    rather than being attributed to Paytm on our say-so."""
+    assert not company_matches("Paytm Payment Gateway", "Paytm")
+
+
 @pytest.mark.parametrize("a,b", [(None, "Postman"), ("Stitch", None), ("", "Postman")])
 def test_guard_refuses_to_match_on_missing_information(a, b):
     assert not company_matches(a, b)

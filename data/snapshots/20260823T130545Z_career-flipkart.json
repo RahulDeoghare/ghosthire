@@ -1,0 +1,9 @@
+[
+  {
+    "input": {
+      "url": "https://job-boards.greenhouse.io/flipkart"
+    },
+    "error": "The navigation resulted in a dead page (404 status code)",
+    "error_code": "dead_page"
+  }
+]
