@@ -13,6 +13,12 @@
   .band-ghost { background:#7f1d1d; color:#fee2e2; }
   .band-none  { background:#334155; color:#cbd5e1; }
   body { font-feature-settings: "tnum"; }
+  /* Owned here, not borrowed from the CDN. `hidden` is a Tailwind utility, and
+     closeDetail() only toggles that class — so with the CDN unreachable the
+     evidence modal could be opened and never dismissed, covering the page for
+     good. The band colours above are inline for the same reason: a dead CDN
+     must not take the score bands with it. */
+  .hidden { display: none !important; }
 </style>
 </head>
 <body class="bg-slate-950 text-slate-200 antialiased">
@@ -42,7 +48,8 @@
 </main>
 
 <!-- Evidence view. Opens over the list; both sources side by side. -->
-<div id="detail" class="hidden fixed inset-0 bg-black/70 z-20 overflow-y-auto">
+<div id="detail" role="dialog" aria-modal="true" aria-label="Listing evidence"
+     class="hidden fixed inset-0 bg-black/70 z-20 overflow-y-auto">
   <div class="max-w-4xl mx-auto my-10 bg-slate-900 border border-slate-700 rounded-lg">
     <div id="detail-body" class="p-6"></div>
   </div>
@@ -52,6 +59,33 @@
 const $ = (s, r=document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// esc() makes a URL safe to put *in* an attribute; it says nothing about what
+// the URL does when clicked. `javascript:alert(1)` survives escaping intact and
+// becomes a live link running in this origin. Every URL here is scraped remote
+// text, and the whole product invites the viewer to click it, so the scheme is
+// checked and anything that is not http(s) is rendered as inert text instead.
+function safeUrl(u) {
+  const raw = String(u ?? "").trim();
+  if (!raw) return null;
+  try {
+    // Parsed with no base on purpose. Resolving against location.origin turned
+    // an empty or relative job_url into a link back to this dashboard, labelled
+    // "open the board listing" — evidence that goes nowhere. Every URL rendered
+    // here was scraped as an absolute link, so anything else is not one.
+    const parsed = new URL(raw);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null;
+  } catch { return null; }
+}
+
+function linkOrText(url, label, cls) {
+  const safe = safeUrl(url);
+  if (!safe) {
+    return `<span class="${cls} opacity-60" title="not a http(s) URL — shown as text, not linked">
+      ${esc(url)} <span class="text-amber-400">(unsafe URL, not linked)</span></span>`;
+  }
+  return `<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer" class="${cls}">${esc(label)}</a>`;
+}
 
 const BAND = { "likely real":"band-real", "questionable":"band-quest", "likely ghost":"band-ghost" };
 let META = null;
@@ -192,6 +226,7 @@ async function viewCollectors() {
 }
 
 async function openDetail(id) {
+  lastFocus = document.activeElement;
   const d = await api(`/api/listings/${id}`);
   const matched = d.matched_career_listing;
   $("#detail-body").innerHTML = `
@@ -217,10 +252,13 @@ async function openDetail(id) {
       <div class="border border-slate-800 rounded p-4">
         <h3 class="text-xs uppercase text-slate-500 mb-2">On the job board</h3>
         <p class="text-slate-200">${esc(d.job_title)}</p>
-        <p class="text-slate-400 text-sm mt-1">Posted: ${d.date_posted ? esc(d.date_posted) : "not stated on the listing"}</p>
+        <p class="text-slate-400 text-sm mt-1">Posted: ${d.date_posted
+          ? dateCell(d) : "<span class='text-slate-500'>not stated on the listing</span>"}</p>
+        ${d.date_confidence === "relative" ? `<p class="text-slate-500 text-xs">
+          derived from a relative date on the listing, so accurate to about a week</p>` : ""}
         ${d.salary_range ? `<p class="text-slate-400 text-sm">${esc(d.salary_range)}</p>` : ""}
-        <a href="${esc(d.board_url)}" target="_blank" rel="noopener"
-           class="text-sky-400 hover:underline text-sm mt-2 inline-block break-all">open the board listing →</a>
+        ${linkOrText(d.board_url, "open the board listing →",
+                     "text-sky-400 hover:underline text-sm mt-2 inline-block break-all")}
       </div>
       <div class="border border-slate-800 rounded p-4">
         <h3 class="text-xs uppercase text-slate-500 mb-2">On the company careers page</h3>
@@ -228,8 +266,8 @@ async function openDetail(id) {
           ? `<p class="text-emerald-300">${esc(matched.job_title)}</p>
              <p class="text-slate-400 text-sm mt-1">matched${d.match_confidence != null
                ? ` at ${(d.match_confidence*100).toFixed(0)}% confidence` : ""}</p>
-             <a href="${esc(matched.career_url)}" target="_blank" rel="noopener"
-                class="text-sky-400 hover:underline text-sm mt-2 inline-block break-all">open the careers-page role →</a>`
+             ${linkOrText(matched.career_url, "open the careers-page role →",
+                          "text-sky-400 hover:underline text-sm mt-2 inline-block break-all")}`
           : d.assessed
             ? `<p class="text-red-300">No matching role found.</p>
                <p class="text-slate-400 text-sm mt-1">We read this company's careers page and none of its
@@ -251,8 +289,7 @@ async function openDetail(id) {
         <ul class="mt-2 space-y-1 max-h-56 overflow-y-auto">
           ${d.career_page_roles.map(r => `
             <li class="text-sm text-slate-400">
-              <a href="${esc(r.career_url)}" target="_blank" rel="noopener"
-                 class="hover:text-sky-400">${esc(r.job_title)}</a></li>`).join("")}
+              ${linkOrText(r.career_url, r.job_title, "hover:text-sky-400")}</li>`).join("")}
         </ul>
       </details>` : ""}
 
@@ -261,9 +298,19 @@ async function openDetail(id) {
       · source <code class="text-slate-400">${esc(d.source)}</code>
     </p>`;
   $("#detail").classList.remove("hidden");
+  // Move focus into the dialog so a keyboard user is not left tabbing through
+  // the list behind it, and remember where to put focus back.
+  const closeBtn = $("#detail-body button");
+  if (closeBtn) closeBtn.focus();
 }
 
-function closeDetail(){ $("#detail").classList.add("hidden"); }
+let lastFocus = null;
+
+function closeDetail(){
+  $("#detail").classList.add("hidden");
+  if (lastFocus && lastFocus.focus) lastFocus.focus();
+  lastFocus = null;
+}
 $("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeDetail(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
 
