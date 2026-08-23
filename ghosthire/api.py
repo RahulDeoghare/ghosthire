@@ -295,6 +295,79 @@ def meta() -> dict[str, Any]:
     }
 
 
+ACCESS_LABEL = {
+    "readable":     "careers page readable",
+    "unreadable":   "careers page uses an ATS this collector cannot read yet",
+    "js_portal":    "bespoke portal — roles load client-side",
+    "out_of_scope": "out of scope by rule",
+}
+
+
+@app.get("/api/companies")
+def companies() -> list[dict[str, Any]]:
+    """Coverage per company: what we found, and whether we could check it.
+
+    This is the honest shape of the product. A listing we cannot verify is not
+    a failure to report — it is a company whose careers page is unreadable, or
+    off-limits, and saying which is more useful than a blank cell.
+    """
+    doc = load_collectors()
+    notes: dict[str, dict[str, Any]] = {}
+    for collector in doc.get("collectors") or []:
+        for target in collector.get("targets") or []:
+            slug = target.get("slug")
+            if not slug:
+                continue
+            entry = notes.setdefault(slug, {"company": target.get("company")})
+            if collector.get("kind") == "career":
+                entry["access"] = target.get("career_access")
+                entry["note"] = target.get("career_access_note")
+                entry["career_url"] = target.get("url")
+                entry["ats"] = target.get("ats")
+                entry["roles_seen"] = target.get("roles_seen")
+            else:
+                entry["board_url"] = target.get("url")
+                entry["rows_seen"] = target.get("rows_seen")
+                entry["rows_at_company"] = target.get("rows_at_company")
+
+    with db() as conn:
+        stored = {r["c"]: dict(r) for r in conn.execute(
+            """SELECT l.company_name_normalized c, l.company_name name,
+                      COUNT(*) listings,
+                      SUM(COALESCE(s.career_page_checked, 0)) assessed
+                 FROM job_listings l
+                 LEFT JOIN ghost_scores s ON s.listing_id = l.id
+                WHERE l.source != 'career_page'
+                GROUP BY 1""")}
+        careers = {r["c"]: r["n"] for r in conn.execute(
+            "SELECT company_name_normalized c, COUNT(*) n FROM job_listings "
+            "WHERE source = 'career_page' GROUP BY 1")}
+
+    from .normalize import normalize_company
+    out = []
+    for slug, meta in notes.items():
+        key = normalize_company(meta.get("company"))
+        row = stored.get(key, {})
+        listings = row.get("listings", 0)
+        if not listings and not careers.get(key):
+            continue
+        access = meta.get("access")
+        out.append({
+            "slug": slug,
+            "company": meta.get("company"),
+            "listings": listings,
+            "assessed": row.get("assessed", 0) or 0,
+            "career_roles": careers.get(key, 0),
+            "ats": meta.get("ats"),
+            "access": access,
+            "access_label": ACCESS_LABEL.get(access, "not yet checked"),
+            "note": meta.get("note"),
+            "board_rows_seen": meta.get("rows_seen"),
+            "board_rows_ours": meta.get("rows_at_company"),
+        })
+    return sorted(out, key=lambda r: (-r["listings"], r["company"] or ""))
+
+
 @app.get("/api/heal")
 def heal() -> dict[str, Any]:
     """The repair history, keyed by the collector that survived it.

@@ -315,6 +315,32 @@ a named list of companies, on both sides. That is a smaller claim and a more def
 one — every score traces to two URLs a reader can open. The front-page sweep is kept for
 the coverage number, not for scoring.
 
+## Why coverage is narrow — VERIFIED 2026-08-23
+
+Verifying a listing requires reading that employer's own careers page, and that is the
+binding constraint. A survey of 26 Indian technology companies found **three** with a
+public Greenhouse board this collector can read: Razorpay, Groww and Postman.
+
+The others fail for three distinct reasons, and the dashboard names which:
+
+| Reason | Example | Detail |
+|---|---|---|
+| Unreadable ATS | Freshworks, BrowserStack, CRED | SmartRecruiters, Workday and Lever all return a well-formed **empty array** — the fourth platform tested after Greenhouse |
+| Bespoke portal | Swiggy, Zerodha | roles are fetched client-side; the served page carries none |
+| **Out of scope by rule** | NoBroker | its "See all opportunities" points at `linkedin.com/jobs/search` |
+
+**NoBroker is the interesting case.** Its careers page carries no listings at all — the
+job portal *is* LinkedIn. That fails the public-data-only rule, and Bright Data already
+ships a pre-built LinkedIn scraper, so building one would re-implement a product rather
+than demonstrate anything. NoBroker is unassessable **by rule, not by capability**, and
+that distinction is stated on the dashboard rather than hidden behind a blank cell.
+
+The structural finding underneath: **the employers who advertise on this board and the
+employers with machine-readable careers pages are largely different populations.** Mid-
+market Indian companies use bespoke portals or LinkedIn; the ones on Greenhouse barely
+appear on the board. That is why 4 of 70 listings are assessed, and it is a property of
+the market rather than of the pipeline.
+
 ## Only public data
 
 Every target here is a public page reachable without an account. Nothing behind a

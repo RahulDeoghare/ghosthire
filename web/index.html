@@ -61,6 +61,7 @@
 <nav class="sticky top-0 z-10 border-b rule backdrop-blur" style="background:rgba(8,9,12,.92)">
   <div class="max-w-6xl mx-auto px-6 flex gap-6 text-sm overflow-x-auto">
     <a href="#findings"   class="navlink py-3 whitespace-nowrap">Findings</a>
+    <a href="#coverage"   class="navlink py-3 whitespace-nowrap">Coverage</a>
     <a href="#method"     class="navlink py-3 whitespace-nowrap">What we won't claim</a>
     <a href="#collectors" class="navlink py-3 whitespace-nowrap">Collectors &amp; self-healing</a>
     <a href="#output"     class="navlink py-3 whitespace-nowrap">Structured output</a>
@@ -78,9 +79,22 @@
     <div id="bands" class="mt-5 flex flex-wrap gap-5 text-xs"></div>
   </section>
 
+  <!-- ── coverage per company ─────────────────────────────────────────── -->
+  <section id="coverage" class="pt-14 pb-4 border-t rule mt-12">
+    <p class="sect-num uppercase mb-2">02 — Coverage</p>
+    <h2 class="text-2xl font-semibold tracking-tight">Which employers we can actually check</h2>
+    <p class="mt-2 muted text-sm max-w-3xl">
+      Verifying a listing means reading that employer's own careers page. Where we
+      can't, the reason is stated — an unreadable applicant-tracking system, a
+      portal that builds itself in the browser, or a page that is off-limits under
+      the public-data-only rule. A blank cell would hide which.
+    </p>
+    <div id="companies" class="mt-6"></div>
+  </section>
+
   <!-- ── the honesty section ──────────────────────────────────────────── -->
   <section id="method" class="pt-14 pb-4 border-t rule mt-12">
-    <p class="sect-num uppercase mb-2">02 — What we won't claim</p>
+    <p class="sect-num uppercase mb-2">03 — What we won't claim</p>
     <h2 class="text-2xl font-semibold tracking-tight">Absence of evidence is not evidence of absence</h2>
     <div class="grid lg:grid-cols-3 gap-4 mt-6">
       <div class="surface rounded-lg p-5 lg:col-span-2">
@@ -119,7 +133,7 @@
 
   <!-- ── the scraper workflow ─────────────────────────────────────────── -->
   <section id="collectors" class="pt-14 pb-4 border-t rule mt-12">
-    <p class="sect-num uppercase mb-2">03 — Scraper workflow</p>
+    <p class="sect-num uppercase mb-2">04 — Scraper workflow</p>
     <h2 class="text-2xl font-semibold tracking-tight">Collectors, and what broke</h2>
     <p class="mt-2 muted text-sm max-w-3xl">
       Each collector was built by handing Bright Data Scraper Studio a
@@ -133,7 +147,7 @@
 
   <!-- ── the structured output ────────────────────────────────────────── -->
   <section id="output" class="pt-14 pb-16 border-t rule mt-12">
-    <p class="sect-num uppercase mb-2">04 — Structured output</p>
+    <p class="sect-num uppercase mb-2">05 — Structured output</p>
     <h2 class="text-2xl font-semibold tracking-tight">The archive behind every number</h2>
     <p class="mt-2 muted text-sm max-w-3xl">
       Every collector response is written to <span class="mono text-xs">data/snapshots/</span>
@@ -329,6 +343,43 @@ async function showUnassessed() {
   wire(el);
 }
 
+const ACCESS_STYLE = {
+  "readable":     "band-real",
+  "unreadable":   "band-quest",
+  "js_portal":    "band-quest",
+  "out_of_scope": "band-none",
+};
+
+async function loadCompanies() {
+  const rows = await api("/api/companies");
+  $("#companies").innerHTML = `<div class="surface rounded-lg overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="raised text-xs uppercase dim">
+        <th class="text-left px-4 py-3">Employer</th>
+        <th class="text-right px-4 py-3">Listings found</th>
+        <th class="text-right px-4 py-3">Verified</th>
+        <th class="text-right px-4 py-3">Careers-page roles</th>
+        <th class="text-left px-4 py-3">Why</th>
+      </tr></thead>
+      <tbody>${rows.map(c => `
+        <tr class="border-t rule">
+          <td class="px-4 py-3 font-medium">${esc(c.company)}
+            ${c.ats ? `<span class="dim text-xs">${esc(c.ats)}</span>` : ""}</td>
+          <td class="px-4 py-3 text-right">${c.listings || "—"}</td>
+          <td class="px-4 py-3 text-right ${c.assessed ? "" : "dim"}">${c.assessed || "—"}</td>
+          <td class="px-4 py-3 text-right ${c.career_roles ? "" : "dim"}">${c.career_roles || "—"}</td>
+          <td class="px-4 py-3">
+            <span class="${ACCESS_STYLE[c.access] || "band-none"} px-2 py-0.5 rounded text-xs">
+              ${esc(c.access_label)}</span>
+            ${c.note ? `<p class="dim text-xs mt-1">${esc(c.note)}</p>` : ""}
+            ${c.board_rows_seen && c.board_rows_ours === 0
+              ? `<p class="dim text-xs mt-1">${c.board_rows_seen} rows matched the keyword,
+                 none of them this employer</p>` : ""}
+          </td>
+        </tr>`).join("")}</tbody>
+    </table></div>`;
+}
+
 async function loadHeal() {
   const h = await api("/api/heal");
   if (!h.collectors.length) { $("#heal").innerHTML = ""; return; }
@@ -435,7 +486,7 @@ async function start() {
     $("#board").innerHTML = table(board);
     wire($("#board"));
 
-    await Promise.all([loadCollectors(), loadHeal(), loadSnapshots()]);
+    await Promise.all([loadCompanies(), loadCollectors(), loadHeal(), loadSnapshots()]);
   } catch (err) {
     document.querySelector("main").innerHTML = `<div class="surface rounded-lg p-6 my-10">
       <p style="color:var(--ghost)">Could not load: ${esc(err.message)}</p>
@@ -445,7 +496,7 @@ async function start() {
 }
 
 // nav highlighting
-const sections = ["findings","method","collectors","output"];
+const sections = ["findings","coverage","method","collectors","output"];
 addEventListener("scroll", () => {
   let cur = sections[0];
   for (const id of sections) {

@@ -135,13 +135,6 @@ collectors:
       # page showed listings for swiggy and lenskart and none for the rest, but
       # a fetch is not a collector run and this file does not record guesses as
       # observations.
-      - slug: swiggy
-        company: Swiggy
-        url: https://internshala.com/jobs/keywords-swiggy
-        observed_by: null
-        observed_on: null
-        rows_seen: null
-        evidence: null
       - slug: freshworks
         company: Freshworks
         url: https://internshala.com/jobs/keywords-freshworks
@@ -297,6 +290,8 @@ collectors:
         observed_on: 2026-08-21
         roles_seen: 25
         evidence: data/snapshots/20260821T183126Z_career-razorpay.json
+        career_access: readable
+        career_access_note: Greenhouse board — extracts cleanly
         # 24 roles on 2026-08-20 (20260820T172031Z_fork-razorpay.json), 25 on
         # 2026-08-21. Both snapshots are kept: a board that changes between
         # runs is the effect this project exists to measure.
@@ -309,6 +304,8 @@ collectors:
         observed_on: 2026-08-23
         roles_seen: 50
         evidence: data/snapshots/20260823T130540Z_career-postman.json
+        career_access: readable
+        career_access_note: Greenhouse board — extracts cleanly
       # Greenhouse, and it extracts. Added 2026-08-23 after a survey of 26
       # Indian tech companies found only these few with a public Greenhouse
       # board — most use custom career portals this collector cannot read yet.
@@ -321,6 +318,8 @@ collectors:
         observed_on: 2026-08-23
         roles_seen: 5
         evidence: data/snapshots/20260823T130226Z_career-groww.json
+        career_access: readable
+        career_access_note: Greenhouse board — extracts cleanly
       - slug: freshworks
         company: Freshworks
         url: https://careers.smartrecruiters.com/Freshworks
@@ -333,6 +332,8 @@ collectors:
         # a SmartRecruiters DOM). The 54 roles are on the page; we cannot yet
         # extract them. Both facts are true and neither cancels the other.
         evidence: null
+        career_access: unreadable
+        career_access_note: SmartRecruiters DOM — this collector returns zero rows
       # Real boards, but JS-rendered: a plain HTTP fetch returns an empty
       # shell. Scraper Studio renders in a browser, so these are expected to
       # work where a naive fetch does not — that is a claim to test, not to
@@ -351,6 +352,28 @@ collectors:
         observed_on: 2026-08-20
         roles_seen: 0
         evidence: data/snapshots/20260820T172040Z_fork-browserstack.json
+        career_access: unreadable
+        career_access_note: Workday DOM; this collector returns zero rows
+      # NoBroker's careers page carries no listings at all — its "See all
+      # opportunities" button points at linkedin.com/jobs/search. LinkedIn is
+      # login-walled, so it fails the public-data-only rule, and Bright Data
+      # already ships a pre-built LinkedIn scraper, so building one would
+      # re-implement a product rather than demonstrate anything. NoBroker is
+      # therefore unassessable by rule, not by capability — a distinction the
+      # dashboard states rather than hides.
+      - slug: nobroker
+        company: NoBroker
+        url: https://www.nobroker.in/careers
+        landing_url: https://www.nobroker.in/careers
+        url_is_landing: true
+        ats: linkedin
+        observed_by: collector
+        observed_on: 2026-08-23
+        roles_seen: 0
+        evidence: data/snapshots/20260823T131711Z_career-nobroker.json
+        career_access: out_of_scope
+        career_access_note: careers portal is LinkedIn — login-walled and covered by a pre-built scraper
+
       - slug: zerodha
         company: Zerodha
         url: https://careers.zerodha.com/
@@ -360,6 +383,8 @@ collectors:
         observed_on: null
         roles_seen: null
         evidence: null
+        career_access: js_portal
+        career_access_note: bespoke portal, roles loaded client-side
       - slug: cred
         company: CRED
         # The real board is Lever, found 2026-08-23 — careers.cred.club is the
@@ -375,6 +400,8 @@ collectors:
         observed_on: 2026-08-23
         roles_seen: 0
         evidence: data/snapshots/20260823T130205Z_career-cred.json
+        career_access: unreadable
+        career_access_note: Lever DOM — this collector returns zero rows
       - slug: swiggy
         # Career page and job board are the same URL here — a single-page app.
         # Flagged so the landing-page test can distinguish this from an
@@ -388,6 +415,8 @@ collectors:
         observed_on: null
         roles_seen: null
         evidence: null
+        career_access: js_portal
+        career_access_note: bespoke portal — roles loaded client-side
       # Meesho refuses plain fetches (403) on both the careers page and the
       # Lever board guess. Left in as a target because the unblocker zone is
       # exactly the tool for this, but the ATS is a guess.
@@ -400,6 +429,8 @@ collectors:
         observed_on: null
         roles_seen: null
         evidence: null
+        career_access: unreadable
+        career_access_note: Lever DOM — untested here, Lever returns zero rows on CRED
 
   # --- self-healing demo ------------------------------------------------
   # Points at a static mirror career page we control, so the DOM can be broken
