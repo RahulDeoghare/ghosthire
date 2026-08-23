@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .bdata import extract_rows, load_collectors
-from .db import iter_snapshots
+from .bdata import extract_errors, extract_rows, load_collectors
+from .db import iter_snapshots, record_run
 from .ingest import ingest_rows
 from .match import match_listing
 from .score import score_listing
@@ -40,16 +40,49 @@ class SnapshotPlan:
     company: str | None = None
     company_from_target: bool = False
     collector_id: str | None = None
+    collector_name: str | None = None
 
 
 @dataclass
 class RebuildReport:
     ingested: int = 0
+    runs: int = 0
     rejected: int = 0
     scored: int = 0
     unassessed: int = 0
     skipped: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+
+
+def collector_history() -> list[tuple[str, str, str]]:
+    """(created_at, name, collector_id) for every collector the archive records.
+
+    Read from the `scraper create` envelopes rather than from config, because
+    config only knows the collector that is current. The first career collector
+    was built against a landing page, failed on three targets and was replaced —
+    and without this its failures would be filed under the ID of the collector
+    that replaced it, which is the opposite of provenance.
+    """
+    out: list[tuple[str, str, str]] = []
+    for path, payload in iter_snapshots(warn=False):
+        if not isinstance(payload, dict) or not payload.get("collector_id"):
+            continue
+        created = payload.get("created_at") or ""
+        out.append((created, payload.get("name") or "", payload["collector_id"]))
+    return sorted(out)
+
+
+def _collector_at(name: str, when: str, history: list[tuple[str, str, str]]) -> str | None:
+    """Which collector of this name existed when the snapshot was taken."""
+    best = None
+    for created, cname, cid in history:
+        if cname != name:
+            continue
+        # created_at is ISO with a Z; the snapshot stamp is 20260820T172031Z.
+        stamp = created.replace("-", "").replace(":", "")[:15]
+        if stamp <= when:
+            best = cid
+    return best
 
 
 def _collector_id_for(source: str, doc: dict[str, Any]) -> str | None:
@@ -67,6 +100,13 @@ def _collector_id_for(source: str, doc: dict[str, Any]) -> str | None:
     for collector in doc.get("collectors") or []:
         if collector.get("source") == source and collector.get("collector_id"):
             return collector["collector_id"]
+    return None
+
+
+def _collector_name_for(source: str, doc: dict[str, Any]) -> str | None:
+    for collector in doc.get("collectors") or []:
+        if collector.get("source") == source and collector.get("collector_id"):
+            return collector.get("name")
     return None
 
 
@@ -102,14 +142,16 @@ def plan_snapshot(path: Path, doc: dict[str, Any]) -> SnapshotPlan | None:
             if not company:
                 return None
             return SnapshotPlan(path, source, slug, company, from_target,
-                                _collector_id_for(source, doc))
+                                _collector_id_for(source, doc),
+                                _collector_name_for(source, doc))
 
     if label.startswith("internshala"):
         # The front-page sweep: every row names its own employer and there is
         # no target company, so the guard has nothing to compare against and
         # each row stands on its own.
         return SnapshotPlan(path, "internshala",
-                            collector_id=_collector_id_for("internshala", doc))
+                            collector_id=_collector_id_for("internshala", doc),
+                            collector_name=_collector_name_for("internshala", doc))
     return None
 
 
@@ -124,10 +166,12 @@ def rebuild(conn: sqlite3.Connection, quiet: bool = False) -> RebuildReport:
     ghost_scores goes first: it holds foreign keys into job_listings.
     """
     doc = load_collectors()
+    history = collector_history()
     report = RebuildReport()
 
     conn.execute("DELETE FROM ghost_scores")
     conn.execute("DELETE FROM job_listings")
+    conn.execute("DELETE FROM scrape_runs")
     conn.commit()
 
     for path, payload in iter_snapshots():
@@ -137,9 +181,24 @@ def rebuild(conn: sqlite3.Connection, quiet: bool = False) -> RebuildReport:
             continue
 
         rows = extract_rows(payload)
+        errors = extract_errors(payload)
+
+        # Every archived response is a run that happened, and a run that
+        # returned nothing is still evidence — the collector panel showing
+        # "no run recorded" beside a collector with 50 stored rows was an
+        # artefact of only the live trigger writing this table.
+        stamp = path.name[:16]
+        status = "failed" if (errors and not rows) else "success" if rows else "partial"
+        ran_as = _collector_at(plan.collector_name or "", stamp[:15], history) \
+            or plan.collector_id or "unknown"
+        record_run(
+            conn, plan.source, ran_as,
+            (plan.company or plan.slug or ""), status, len(rows),
+            started_at=stamp, completed_at=stamp, raw_path=str(path.name),
+        )
+        report.runs += 1
+
         if not rows:
-            # Real and worth recording: a page with nothing on it, or a scrape
-            # that failed. Neither adds listings.
             continue
 
         # The envelope wins when present; otherwise the config says which

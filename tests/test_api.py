@@ -111,6 +111,31 @@ def test_collectors_sharing_one_id_do_not_share_each_others_counts(client):
     assert per_company["listings_stored"] > 0
 
 
+def test_run_counts_are_not_shared_between_collectors_with_one_id(client):
+    """The same defect as listings_stored, in a different column: two keys
+    share c_mt1senswibym6o5va, and keying runs by ID alone gave each of them
+    the other's runs as well."""
+    rows = {r["key"]: r for r in client.get("/api/collectors").json()}
+    firehose, per_company = rows["board_internshala_jobs"], rows["board_company"]
+
+    assert firehose["collector_id"] == per_company["collector_id"]
+    combined = firehose["runs"] + per_company["runs"]
+    assert firehose["runs"] < combined and per_company["runs"] < combined
+
+
+def test_a_retired_collector_keeps_its_failures_on_the_record(client):
+    """The first career collector was built against a landing page, failed on
+    two of three targets and was replaced. It is gone from the config, so
+    listing only configured collectors silently deleted those failures from
+    the reliability record."""
+    rows = client.get("/api/collectors").json()
+    retired = [r for r in rows if r.get("retired")]
+
+    assert retired, "a collector that ran but is no longer configured must still show"
+    assert any(r["runs_failed"] > 0 for r in retired)
+    assert all(r["collector_id"].startswith("c_") for r in retired)
+
+
 def test_an_uncreated_collector_stores_nothing(client):
     for row in client.get("/api/collectors").json():
         if not row["created"]:

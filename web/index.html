@@ -3,54 +3,160 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GhostHire</title>
+<title>GhostHire — ghost job detection</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  /* Score bands. Colour is a shorthand for the band, never the only cue —
-     the numeric score and the band name are always shown next to it. */
-  .band-real  { background:#065f46; color:#d1fae5; }
-  .band-quest { background:#78350f; color:#fef3c7; }
-  .band-ghost { background:#7f1d1d; color:#fee2e2; }
-  .band-none  { background:#334155; color:#cbd5e1; }
-  body { font-feature-settings: "tnum"; }
-  /* Owned here, not borrowed from the CDN. `hidden` is a Tailwind utility, and
-     closeDetail() only toggles that class — so with the CDN unreachable the
-     evidence modal could be opened and never dismissed, covering the page for
-     good. The band colours above are inline for the same reason: a dead CDN
-     must not take the score bands with it. */
-  .hidden { display: none !important; }
+  /* Everything load-bearing is defined here rather than borrowed from the CDN.
+     A dead CDN costs this page its layout; it must not also cost it the score
+     encoding, or the ability to dismiss a dialog. */
+  :root{
+    --bg:#08090c; --surface:#0e1015; --raised:#141821; --line:#1e2430;
+    --text:#e8eaf0; --muted:#8b93a7; --dim:#5c6478;
+    --accent:#5b9cff; --real:#34d399; --quest:#fbbf24; --ghost:#f87171;
+  }
+  body{background:var(--bg);color:var(--text);font-feature-settings:"tnum","cv02";}
+  .hidden{display:none !important;}
+  .surface{background:var(--surface);border:1px solid var(--line);}
+  .raised{background:var(--raised);}
+  .rule{border-color:var(--line);}
+  .muted{color:var(--muted);} .dim{color:var(--dim);}
+  .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;}
+
+  .band-real {background:rgba(52,211,153,.13); color:var(--real);  border:1px solid rgba(52,211,153,.28);}
+  .band-quest{background:rgba(251,191,36,.13); color:var(--quest); border:1px solid rgba(251,191,36,.28);}
+  .band-ghost{background:rgba(248,113,113,.13);color:var(--ghost); border:1px solid rgba(248,113,113,.28);}
+  .band-none {background:rgba(139,147,167,.10);color:var(--dim);   border:1px solid rgba(139,147,167,.20);}
+
+  .sect-num{font-size:.68rem;letter-spacing:.18em;color:var(--dim);}
+  .row:hover{background:var(--raised);}
+  .navlink{color:var(--muted);border-bottom:2px solid transparent;}
+  .navlink:hover{color:var(--text);}
+  .navlink.on{color:var(--text);border-bottom-color:var(--accent);}
+  pre{scrollbar-width:thin;}
+  .tl::before{content:"";position:absolute;left:7px;top:16px;bottom:-4px;width:1px;background:var(--line);}
+  .tl:last-child::before{display:none;}
 </style>
 </head>
-<body class="bg-slate-950 text-slate-200 antialiased">
+<body class="antialiased">
 
-<header class="border-b border-slate-800">
-  <div class="max-w-6xl mx-auto px-6 py-6">
-    <h1 class="text-2xl font-semibold text-slate-100">GhostHire</h1>
-    <p class="text-sm text-slate-400 mt-1 max-w-3xl">
-      Job listings advertised on a board that the hiring company does not list on
-      its own careers page. Every score cites both URLs and the collector that
-      produced them, so any claim here can be checked in ten seconds.
+<!-- ── the problem ─────────────────────────────────────────────────────── -->
+<header class="border-b rule">
+  <div class="max-w-6xl mx-auto px-6 pt-14 pb-10">
+    <p class="sect-num uppercase mb-3">Ghost job detection</p>
+    <h1 class="text-4xl sm:text-5xl font-semibold tracking-tight">GhostHire</h1>
+    <p class="mt-4 text-lg muted max-w-2xl leading-relaxed">
+      Some jobs are advertised on boards long after the company stopped hiring for
+      them. GhostHire reads a job board and the employer's own careers page, and
+      reports the listings that appear on one but not the other.
     </p>
-    <div id="summary" class="flex flex-wrap gap-3 mt-4 text-xs"></div>
+    <p class="mt-3 text-sm dim max-w-2xl">
+      Every claim on this page cites the board URL, the careers-page URL, and the
+      Bright Data collector that produced them — so it can be checked, or refuted,
+      in about ten seconds.
+    </p>
+    <div id="stats" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-8"></div>
   </div>
 </header>
 
-<nav class="border-b border-slate-800 sticky top-0 bg-slate-950/95 backdrop-blur z-10">
-  <div class="max-w-6xl mx-auto px-6 flex gap-1">
-    <button data-view="leaderboard" class="tab px-4 py-3 text-sm border-b-2">Leaderboard</button>
-    <button data-view="unassessed"  class="tab px-4 py-3 text-sm border-b-2">Not assessed</button>
-    <button data-view="collectors"  class="tab px-4 py-3 text-sm border-b-2">Collectors</button>
+<nav class="sticky top-0 z-10 border-b rule backdrop-blur" style="background:rgba(8,9,12,.92)">
+  <div class="max-w-6xl mx-auto px-6 flex gap-6 text-sm overflow-x-auto">
+    <a href="#findings"   class="navlink py-3 whitespace-nowrap">Findings</a>
+    <a href="#method"     class="navlink py-3 whitespace-nowrap">What we won't claim</a>
+    <a href="#collectors" class="navlink py-3 whitespace-nowrap">Collectors &amp; self-healing</a>
+    <a href="#output"     class="navlink py-3 whitespace-nowrap">Structured output</a>
   </div>
 </nav>
 
-<main class="max-w-6xl mx-auto px-6 py-8">
-  <div id="view"></div>
+<main class="max-w-6xl mx-auto px-6">
+
+  <!-- ── the final product ────────────────────────────────────────────── -->
+  <section id="findings" class="pt-14 pb-4">
+    <p class="sect-num uppercase mb-2">01 — Findings</p>
+    <h2 class="text-2xl font-semibold tracking-tight">Listings ranked by ghost score</h2>
+    <p class="mt-2 muted text-sm max-w-3xl" id="findings-note"></p>
+    <div id="board" class="mt-6"></div>
+    <div id="bands" class="mt-5 flex flex-wrap gap-5 text-xs"></div>
+  </section>
+
+  <!-- ── the honesty section ──────────────────────────────────────────── -->
+  <section id="method" class="pt-14 pb-4 border-t rule mt-12">
+    <p class="sect-num uppercase mb-2">02 — What we won't claim</p>
+    <h2 class="text-2xl font-semibold tracking-tight">Absence of evidence is not evidence of absence</h2>
+    <div class="grid lg:grid-cols-3 gap-4 mt-6">
+      <div class="surface rounded-lg p-5 lg:col-span-2">
+        <p class="muted text-sm leading-relaxed">
+          A listing is only scored when we have successfully read that company's
+          careers page. Where we haven't, the listing carries
+          <strong class="text-slate-200">no score at all</strong> — not zero, which
+          would read as "we checked and it is fine". Scoring those would mean
+          accusing employers on the strength of data we never collected.
+        </p>
+        <p class="muted text-sm leading-relaxed mt-3">
+          The database enforces this rather than trusting us to remember:
+          <span class="mono text-xs" style="color:var(--accent)">ghost_score IS NULL</span>
+          exactly when
+          <span class="mono text-xs" style="color:var(--accent)">career_page_checked = 0</span>,
+          as a CHECK constraint.
+        </p>
+        <div id="signals" class="mt-5"></div>
+      </div>
+      <div class="surface rounded-lg p-5">
+        <p class="text-sm font-medium mb-1">Not assessed</p>
+        <p class="text-4xl font-semibold" id="unassessed-n">—</p>
+        <p class="muted text-xs mt-1">listings we decline to score</p>
+        <button onclick="showUnassessed()"
+          class="mt-4 text-xs px-3 py-2 rounded raised border rule hover:text-white muted w-full text-left">
+          Show them anyway →
+        </button>
+        <p class="dim text-xs mt-3 leading-relaxed">
+          Shown, counted, and deliberately blank. Hiding them would overstate
+          our coverage.
+        </p>
+      </div>
+    </div>
+    <div id="unassessed" class="mt-4 hidden"></div>
+  </section>
+
+  <!-- ── the scraper workflow ─────────────────────────────────────────── -->
+  <section id="collectors" class="pt-14 pb-4 border-t rule mt-12">
+    <p class="sect-num uppercase mb-2">03 — Scraper workflow</p>
+    <h2 class="text-2xl font-semibold tracking-tight">Collectors, and what broke</h2>
+    <p class="mt-2 muted text-sm max-w-3xl">
+      Each collector was built by handing Bright Data Scraper Studio a
+      plain-English description of the fields wanted. Every row stored here
+      carries the <span class="mono text-xs">c_*</span> ID of the collector that
+      produced it.
+    </p>
+    <div id="collector-table" class="mt-6"></div>
+    <div id="heal" class="mt-8"></div>
+  </section>
+
+  <!-- ── the structured output ────────────────────────────────────────── -->
+  <section id="output" class="pt-14 pb-16 border-t rule mt-12">
+    <p class="sect-num uppercase mb-2">04 — Structured output</p>
+    <h2 class="text-2xl font-semibold tracking-tight">The archive behind every number</h2>
+    <p class="mt-2 muted text-sm max-w-3xl">
+      Every collector response is written to <span class="mono text-xs">data/snapshots/</span>
+      before anything reads it, successes and failures alike. The database is a cache of
+      this archive — delete it, run
+      <span class="mono text-xs" style="color:var(--accent)">db --from-snapshots</span>,
+      and every number on this page comes back without a network call.
+    </p>
+    <div id="snapshots" class="mt-6"></div>
+  </section>
 </main>
 
-<!-- Evidence view. Opens over the list; both sources side by side. -->
+<footer class="border-t rule">
+  <div class="max-w-6xl mx-auto px-6 py-8 text-xs dim">
+    Evidence worth checking, not proof. Scoring weights are a judgement, not ground truth.
+    Only public pages are read — nothing behind a login or paywall.
+  </div>
+</footer>
+
+<!-- ── evidence view ──────────────────────────────────────────────────── -->
 <div id="detail" role="dialog" aria-modal="true" aria-label="Listing evidence"
-     class="hidden fixed inset-0 bg-black/70 z-20 overflow-y-auto">
-  <div class="max-w-4xl mx-auto my-10 bg-slate-900 border border-slate-700 rounded-lg">
+     class="hidden fixed inset-0 z-20 overflow-y-auto" style="background:rgba(0,0,0,.78)">
+  <div class="max-w-4xl mx-auto my-10 surface rounded-xl">
     <div id="detail-body" class="p-6"></div>
   </div>
 </div>
@@ -60,19 +166,17 @@ const $ = (s, r=document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-// esc() makes a URL safe to put *in* an attribute; it says nothing about what
-// the URL does when clicked. `javascript:alert(1)` survives escaping intact and
-// becomes a live link running in this origin. Every URL here is scraped remote
-// text, and the whole product invites the viewer to click it, so the scheme is
-// checked and anything that is not http(s) is rendered as inert text instead.
+// esc() makes a URL safe to sit *in* an attribute; it says nothing about what
+// the URL does when clicked. `javascript:alert(1)` survives escaping intact.
+// Every URL here is scraped remote text and the page invites the reader to
+// click it, so the scheme is checked and anything else is rendered inert.
 function safeUrl(u) {
   const raw = String(u ?? "").trim();
   if (!raw) return null;
   try {
-    // Parsed with no base on purpose. Resolving against location.origin turned
-    // an empty or relative job_url into a link back to this dashboard, labelled
-    // "open the board listing" — evidence that goes nowhere. Every URL rendered
-    // here was scraped as an absolute link, so anything else is not one.
+    // No base URL on purpose: resolving against the page origin turned an empty
+    // job_url into a link back to this dashboard labelled "open the board
+    // listing" — evidence that goes nowhere.
     const parsed = new URL(raw);
     return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null;
   } catch { return null; }
@@ -80,279 +184,279 @@ function safeUrl(u) {
 
 function linkOrText(url, label, cls) {
   const safe = safeUrl(url);
-  if (!safe) {
-    return `<span class="${cls} opacity-60" title="not a http(s) URL — shown as text, not linked">
-      ${esc(url)} <span class="text-amber-400">(unsafe URL, not linked)</span></span>`;
-  }
+  if (!safe) return `<span class="${cls} opacity-60" title="not a http(s) URL — shown as text, not linked">
+    ${esc(url)} <span style="color:var(--quest)">(unsafe URL, not linked)</span></span>`;
   return `<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer" class="${cls}">${esc(label)}</a>`;
 }
 
-const BAND = { "likely real":"band-real", "questionable":"band-quest", "likely ghost":"band-ghost" };
+const BAND = {"likely real":"band-real","questionable":"band-quest","likely ghost":"band-ghost"};
 let META = null;
 
-async function api(path) {
-  const r = await fetch(path);
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
-  return r.json();
-}
+async function api(p){ const r = await fetch(p); if(!r.ok) throw new Error(`${p} → ${r.status}`); return r.json(); }
 
-function scoreBadge(row) {
-  // An unassessed listing has no score. It gets a dash and a neutral chip —
-  // never a 0, which would read as "we checked and it is fine".
-  if (!row.assessed) {
-    return `<span class="band-none px-2 py-1 rounded text-xs font-mono">—</span>`;
-  }
-  return `<span class="${BAND[row.band] || "band-none"} px-2 py-1 rounded text-xs font-mono font-semibold">${row.ghost_score}</span>`;
+function scoreBadge(row, big=false) {
+  const size = big ? "text-base px-3 py-1.5" : "text-xs px-2 py-1";
+  if (!row.assessed) return `<span class="band-none ${size} rounded mono" title="not assessed — no careers-page data">—</span>`;
+  return `<span class="${BAND[row.band]||"band-none"} ${size} rounded mono font-semibold">${row.ghost_score}</span>`;
 }
 
 function signalChips(signals) {
-  if (!signals || !signals.length) return `<span class="text-slate-500 text-xs">no signals triggered</span>`;
-  return signals.map(s => {
-    const w = META?.signals?.[s];
-    return `<span class="inline-block bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-xs mr-1 mb-1">
-      ${esc(s)}${w ? ` <span class="text-slate-500">+${w}</span>` : ""}</span>`;
-  }).join("");
+  if (!signals?.length) return `<span class="dim text-xs">no signals triggered</span>`;
+  return signals.map(s => `<span class="inline-block raised border rule px-2 py-0.5 rounded text-xs mr-1 mb-1 muted">
+    ${esc(s)} <span class="dim">+${META?.signals?.[s] ?? "?"}</span></span>`).join("");
 }
 
 function dateCell(row) {
-  if (!row.date_posted) {
-    // 28% of board rows carry no date at all. Saying "unknown" is the honest
-    // rendering; a blank cell reads as though we simply forgot to show it.
-    return `<span class="text-slate-500 text-xs" title="no posting date on the listing">unknown</span>`;
-  }
+  if (!row.date_posted)
+    return `<span class="dim text-xs" title="the listing showed no posting date">unknown</span>`;
   const approx = row.date_confidence === "relative";
-  return `<span class="text-xs text-slate-400" title="${approx ? "derived from a relative date such as '3 weeks ago' — accurate to about a week" : "read from the listing"}">
-    ${approx ? "~" : ""}${esc(row.date_posted)}</span>`;
+  return `<span class="text-xs muted" title="${approx
+    ? "derived from a relative date such as '3 weeks ago' — accurate to about a week"
+    : "read from the listing"}">${approx ? "~" : ""}${esc(row.date_posted)}</span>`;
 }
 
-function rowsTable(rows, opts={}) {
-  if (!rows.length) return `<p class="text-slate-500">Nothing here yet.</p>`;
-  return `
-  <div class="overflow-x-auto border border-slate-800 rounded-lg">
+function table(rows, opts={}) {
+  if (!rows.length) return `<p class="dim">Nothing here.</p>`;
+  return `<div class="surface rounded-lg overflow-hidden">
     <table class="w-full text-sm">
-      <thead class="bg-slate-900 text-slate-400 text-xs uppercase">
-        <tr>
-          <th class="text-left px-4 py-3 w-16">Score</th>
-          <th class="text-left px-4 py-3">Company</th>
-          <th class="text-left px-4 py-3">Role</th>
-          <th class="text-left px-4 py-3">Posted</th>
-          <th class="text-left px-4 py-3">${opts.unassessed ? "Why not assessed" : "Signals"}</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-slate-800">
-        ${rows.map(r => `
-          <tr class="hover:bg-slate-900 cursor-pointer" data-id="${r.id}">
-            <td class="px-4 py-3">${scoreBadge(r)}</td>
-            <td class="px-4 py-3 font-medium text-slate-200">${esc(r.company)}</td>
-            <td class="px-4 py-3 text-slate-300">${esc(r.job_title)}</td>
-            <td class="px-4 py-3">${dateCell(r)}</td>
-            <td class="px-4 py-3">${opts.unassessed
-              ? `<span class="text-slate-500 text-xs">no careers-page data for this company</span>`
-              : signalChips(r.signals)}</td>
-          </tr>`).join("")}
-      </tbody>
-    </table>
-  </div>`;
+      <thead><tr class="raised text-xs uppercase dim">
+        <th class="text-left px-4 py-3 w-20">Score</th>
+        <th class="text-left px-4 py-3">Company</th>
+        <th class="text-left px-4 py-3">Role</th>
+        <th class="text-left px-4 py-3 w-32">Posted</th>
+        <th class="text-left px-4 py-3">${opts.unassessed ? "Why not assessed" : "Signals"}</th>
+      </tr></thead>
+      <tbody>${rows.map(r => `
+        <tr class="row cursor-pointer border-t rule" data-id="${r.id}">
+          <td class="px-4 py-3">${scoreBadge(r)}</td>
+          <td class="px-4 py-3 font-medium">${esc(r.company)}</td>
+          <td class="px-4 py-3 muted">${esc(r.job_title)}</td>
+          <td class="px-4 py-3">${dateCell(r)}</td>
+          <td class="px-4 py-3">${opts.unassessed
+            ? `<span class="dim text-xs">no careers-page data for this company</span>`
+            : signalChips(r.signals)}</td>
+        </tr>`).join("")}</tbody>
+    </table></div>`;
 }
 
-async function viewLeaderboard() {
-  const rows = await api("/api/leaderboard");
-  $("#view").innerHTML = `
-    <p class="text-sm text-slate-400 mb-4">
-      Ranked by ghost score. Only listings whose company careers page we actually
-      read appear here — ${META.not_assessed} others are
-      <button class="underline text-slate-300" onclick="go('unassessed')">not assessed</button>
-      and carry no score.
-    </p>
-    ${rowsTable(rows)}
-    <div class="mt-6 flex flex-wrap gap-4 text-xs text-slate-500">
-      ${META.bands.map(b => `<span><span class="${BAND[b.label]} px-2 py-0.5 rounded font-mono mr-1">${b.min}–${b.max}</span>${b.label}</span>`).join("")}
-    </div>`;
-  wireRows();
+function wire(root=document) {
+  root.querySelectorAll("tr[data-id]").forEach(tr =>
+    tr.addEventListener("click", () => openDetail(tr.dataset.id)));
 }
 
-async function viewUnassessed() {
-  const rows = await api("/api/listings?assessed=false&limit=500");
-  $("#view").innerHTML = `
-    <div class="border border-slate-800 bg-slate-900/50 rounded-lg p-4 mb-5">
-      <h2 class="text-slate-200 font-medium mb-1">Not assessed — and deliberately unscored</h2>
-      <p class="text-sm text-slate-400">
-        We have no careers-page data for these companies, so we cannot say whether
-        a listing is missing from one. Absence of evidence is not evidence of
-        absence: scoring these would mean accusing ${rows.length} employers on the
-        strength of data we never collected. They are shown, and left blank.
-      </p>
-    </div>
-    ${rowsTable(rows, {unassessed:true})}`;
-  wireRows();
-}
-
-async function viewCollectors() {
-  const rows = await api("/api/collectors");
-  $("#view").innerHTML = `
-    <p class="text-sm text-slate-400 mb-4">
-      Every collector this project defines. A <code class="text-slate-300">c_*</code>
-      ID is the Bright Data Scraper Studio collector that produced the rows counted
-      beside it; collectors that were never created are shown as such rather than
-      hidden.
-    </p>
-    <div class="overflow-x-auto border border-slate-800 rounded-lg">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-900 text-slate-400 text-xs uppercase">
-          <tr>
-            <th class="text-left px-4 py-3">Key</th>
-            <th class="text-left px-4 py-3">Collector ID</th>
-            <th class="text-left px-4 py-3">Kind</th>
-            <th class="text-right px-4 py-3">Targets</th>
-            <th class="text-right px-4 py-3">Listings stored</th>
-            <th class="text-left px-4 py-3">Status</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-800">
-          ${rows.map(c => `
-            <tr class="${c.created ? "" : "opacity-50"}">
-              <td class="px-4 py-3 text-slate-200">${esc(c.key)}</td>
-              <td class="px-4 py-3 font-mono text-xs ${c.created ? "text-emerald-300" : "text-slate-500"}">
-                ${c.created ? esc(c.collector_id) : "not created"}</td>
-              <td class="px-4 py-3 text-slate-400">${esc(c.kind)}</td>
-              <td class="px-4 py-3 text-right text-slate-400">${c.targets}</td>
-              <td class="px-4 py-3 text-right text-slate-300">${c.listings_stored}</td>
-              <td class="px-4 py-3 text-xs text-slate-400">
-                ${c.enabled ? "" : "disabled · "}${esc(c.last_status || (c.created ? "no run recorded" : "—"))}</td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
-}
+// ── evidence view ───────────────────────────────────────────────────────
+let lastFocus = null;
 
 async function openDetail(id) {
   lastFocus = document.activeElement;
   const d = await api(`/api/listings/${id}`);
-  const matched = d.matched_career_listing;
+  const m = d.matched_career_listing;
   $("#detail-body").innerHTML = `
-    <div class="flex justify-between items-start gap-4 mb-5">
+    <div class="flex justify-between items-start gap-4 mb-6">
       <div>
-        <div class="flex items-center gap-3">
-          ${scoreBadge(d)}
-          <h2 class="text-lg font-semibold text-slate-100">${esc(d.job_title)}</h2>
-        </div>
-        <p class="text-slate-400 text-sm mt-1">${esc(d.company)} · ${esc(d.location || "location not stated")}</p>
+        <div class="flex items-center gap-3">${scoreBadge(d, true)}
+          <h2 class="text-xl font-semibold tracking-tight">${esc(d.job_title)}</h2></div>
+        <p class="muted text-sm mt-2">${esc(d.company)} · ${esc(d.location || "location not stated")}
+          ${d.assessed && d.band ? `· <span class="dim">${esc(d.band)}</span>` : ""}</p>
       </div>
-      <button onclick="closeDetail()" class="text-slate-400 hover:text-slate-200 text-xl leading-none">&times;</button>
+      <button onclick="closeDetail()" class="muted hover:text-white text-2xl leading-none px-2">&times;</button>
     </div>
-
-    ${d.assessed ? "" : `
-      <div class="border border-slate-700 bg-slate-800/50 rounded p-3 mb-5 text-sm text-slate-300">
-        <strong>Not assessed.</strong> We have no careers-page data for
-        ${esc(d.company)}, so this listing has no score. It is not evidence of a
-        ghost job, and it is not evidence of a real one.
-      </div>`}
-
-    <div class="grid md:grid-cols-2 gap-4 mb-5">
-      <div class="border border-slate-800 rounded p-4">
-        <h3 class="text-xs uppercase text-slate-500 mb-2">On the job board</h3>
-        <p class="text-slate-200">${esc(d.job_title)}</p>
-        <p class="text-slate-400 text-sm mt-1">Posted: ${d.date_posted
-          ? dateCell(d) : "<span class='text-slate-500'>not stated on the listing</span>"}</p>
-        ${d.date_confidence === "relative" ? `<p class="text-slate-500 text-xs">
-          derived from a relative date on the listing, so accurate to about a week</p>` : ""}
-        ${d.salary_range ? `<p class="text-slate-400 text-sm">${esc(d.salary_range)}</p>` : ""}
-        ${linkOrText(d.board_url, "open the board listing →",
-                     "text-sky-400 hover:underline text-sm mt-2 inline-block break-all")}
+    ${d.assessed ? "" : `<div class="surface rounded-lg p-4 mb-6 text-sm muted">
+      <strong class="text-slate-200">Not assessed.</strong> We have no careers-page data
+      for ${esc(d.company)}, so this listing has no score. That is not evidence of a ghost
+      job, and not evidence of a real one.</div>`}
+    <div class="grid md:grid-cols-2 gap-4 mb-6">
+      <div class="surface rounded-lg p-5">
+        <p class="sect-num uppercase mb-3">On the job board</p>
+        <p class="font-medium">${esc(d.job_title)}</p>
+        <p class="muted text-sm mt-2">Posted: ${d.date_posted ? dateCell(d) : `<span class="dim">not stated</span>`}</p>
+        ${d.date_confidence === "relative"
+          ? `<p class="dim text-xs mt-1">derived from a relative date, so accurate to about a week</p>` : ""}
+        ${d.salary_range ? `<p class="muted text-sm mt-1">${esc(d.salary_range)}</p>` : ""}
+        <p class="mt-3">${linkOrText(d.board_url, "open the board listing →", "text-sm break-all")
+          .replace('class="text-sm', 'style="color:var(--accent)" class="hover:underline text-sm')}</p>
       </div>
-      <div class="border border-slate-800 rounded p-4">
-        <h3 class="text-xs uppercase text-slate-500 mb-2">On the company careers page</h3>
-        ${matched
-          ? `<p class="text-emerald-300">${esc(matched.job_title)}</p>
-             <p class="text-slate-400 text-sm mt-1">matched${d.match_confidence != null
-               ? ` at ${(d.match_confidence*100).toFixed(0)}% confidence` : ""}</p>
-             ${linkOrText(matched.career_url, "open the careers-page role →",
-                          "text-sky-400 hover:underline text-sm mt-2 inline-block break-all")}`
+      <div class="surface rounded-lg p-5">
+        <p class="sect-num uppercase mb-3">On the company careers page</p>
+        ${m ? `<p class="font-medium" style="color:var(--real)">${esc(m.job_title)}</p>
+               <p class="muted text-sm mt-2">matched${d.match_confidence != null
+                 ? ` at ${(d.match_confidence*100).toFixed(0)}% confidence` : ""}</p>
+               <p class="mt-3">${linkOrText(m.career_url, "open the careers-page role →", "text-sm break-all")
+                 .replace('class="text-sm', 'style="color:var(--accent)" class="hover:underline text-sm')}</p>`
           : d.assessed
-            ? `<p class="text-red-300">No matching role found.</p>
-               <p class="text-slate-400 text-sm mt-1">We read this company's careers page and none of its
+            ? `<p class="font-medium" style="color:var(--ghost)">No matching role found.</p>
+               <p class="muted text-sm mt-2">We read this company's careers page and none of its
                   ${d.career_page_roles.length} open roles matched this title.</p>`
-            : `<p class="text-slate-500">We have not read this company's careers page.</p>`}
+            : `<p class="dim">We have not read this company's careers page.</p>`}
       </div>
     </div>
-
-    <div class="mb-5">
-      <h3 class="text-xs uppercase text-slate-500 mb-2">Signals</h3>
-      ${signalChips(d.signals)}
-    </div>
-
-    ${d.career_page_roles.length ? `
-      <details class="mb-5">
-        <summary class="text-xs uppercase text-slate-500 cursor-pointer">
-          Checked against all ${d.career_page_roles.length} careers-page roles
-        </summary>
-        <ul class="mt-2 space-y-1 max-h-56 overflow-y-auto">
-          ${d.career_page_roles.map(r => `
-            <li class="text-sm text-slate-400">
-              ${linkOrText(r.career_url, r.job_title, "hover:text-sky-400")}</li>`).join("")}
-        </ul>
-      </details>` : ""}
-
-    <p class="text-xs text-slate-500 border-t border-slate-800 pt-3">
-      Collected by <code class="text-slate-400">${esc(d.collector_id || "unknown")}</code>
-      · source <code class="text-slate-400">${esc(d.source)}</code>
-    </p>`;
+    <div class="mb-6"><p class="sect-num uppercase mb-2">Signals</p>${signalChips(d.signals)}</div>
+    ${d.career_page_roles.length ? `<details class="mb-6">
+      <summary class="sect-num uppercase cursor-pointer hover:text-slate-300">
+        Checked against all ${d.career_page_roles.length} careers-page roles</summary>
+      <ul class="mt-3 space-y-1 max-h-56 overflow-y-auto">${d.career_page_roles.map(r =>
+        `<li class="text-sm muted">${linkOrText(r.career_url, r.job_title, "hover:text-white")}</li>`).join("")}</ul>
+    </details>` : ""}
+    <p class="text-xs dim border-t rule pt-4">
+      Collected by <span class="mono" style="color:var(--accent)">${esc(d.collector_id || "unknown")}</span>
+      · source <span class="mono">${esc(d.source)}</span></p>`;
   $("#detail").classList.remove("hidden");
-  // Move focus into the dialog so a keyboard user is not left tabbing through
-  // the list behind it, and remember where to put focus back.
-  const closeBtn = $("#detail-body button");
-  if (closeBtn) closeBtn.focus();
+  const btn = $("#detail-body button"); if (btn) btn.focus();
 }
-
-let lastFocus = null;
 
 function closeDetail(){
   $("#detail").classList.add("hidden");
-  if (lastFocus && lastFocus.focus) lastFocus.focus();
+  if (lastFocus?.focus) lastFocus.focus();
   lastFocus = null;
 }
 $("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeDetail(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
 
-function wireRows() {
-  document.querySelectorAll("tr[data-id]").forEach(tr =>
-    tr.addEventListener("click", () => openDetail(tr.dataset.id)));
+// ── sections ────────────────────────────────────────────────────────────
+function stat(n, label, hint) {
+  return `<div class="surface rounded-lg px-4 py-3">
+    <p class="text-2xl font-semibold">${n}</p>
+    <p class="text-xs muted mt-0.5">${label}</p>
+    ${hint ? `<p class="text-[11px] dim mt-1">${hint}</p>` : ""}</div>`;
 }
 
-const VIEWS = { leaderboard: viewLeaderboard, unassessed: viewUnassessed, collectors: viewCollectors };
+async function showUnassessed() {
+  const el = $("#unassessed");
+  if (!el.classList.contains("hidden")) { el.classList.add("hidden"); return; }
+  const rows = await api("/api/listings?assessed=false&limit=500");
+  el.innerHTML = table(rows, {unassessed:true});
+  el.classList.remove("hidden");
+  wire(el);
+}
 
-async function go(name) {
-  document.querySelectorAll(".tab").forEach(t => {
-    const on = t.dataset.view === name;
-    t.className = `tab px-4 py-3 text-sm border-b-2 ${on
-      ? "border-sky-400 text-slate-100" : "border-transparent text-slate-400 hover:text-slate-200"}`;
-  });
-  $("#view").innerHTML = `<p class="text-slate-500">Loading…</p>`;
-  try { await VIEWS[name](); }
-  catch (err) {
-    $("#view").innerHTML = `<div class="border border-red-900 bg-red-950/40 rounded p-4">
-      <p class="text-red-300">Could not load: ${esc(err.message)}</p>
-      <p class="text-slate-400 text-sm mt-1">Is the API running?
-        <code class="text-slate-300">uvicorn ghosthire.api:app --reload</code></p></div>`;
+async function loadHeal() {
+  const h = await api("/api/heal");
+  if (!h.collectors.length) { $("#heal").innerHTML = ""; return; }
+  $("#heal").innerHTML = h.collectors.map(c => `
+    <div class="surface rounded-lg p-5">
+      <div class="flex flex-wrap items-baseline gap-3 mb-1">
+        <h3 class="font-semibold">Self-healing</h3>
+        <span class="mono text-xs" style="color:var(--accent)">${esc(c.collector_id)}</span>
+      </div>
+      <p class="muted text-sm max-w-3xl">
+        This collector broke and was repaired <strong class="text-slate-200">${c.repairs} times</strong>
+        without ever being recreated — the ID above is the same one that failed, the same one
+        on every stored row, and the same one the API trigger calls. A repair history attached
+        to a stable ID is the difference between a scraper and an endpoint.
+      </p>
+      <div class="mt-5 space-y-4">
+        ${c.events.map(e => `
+          <div class="tl relative pl-7">
+            <span class="absolute left-0 top-1 w-[15px] h-[15px] rounded-full border-2"
+              style="border-color:${e.gated ? "var(--quest)" : "var(--real)"};background:var(--bg)"></span>
+            <div class="flex flex-wrap items-baseline gap-2">
+              <span class="text-sm font-medium">${e.kind === "heal" ? "Repair proposed" : "Approved by a human"}</span>
+              <span class="dim text-xs mono">${esc(e.date)}</span>
+              <span class="text-xs px-2 py-0.5 rounded ${e.gated ? "band-quest" : "band-real"}">${esc(e.status)}</span>
+              <span class="dim text-xs">${e.step_count} steps</span>
+            </div>
+            ${e.prompt ? `<p class="muted text-xs mt-2 max-w-3xl leading-relaxed">
+              <span class="dim">prompt:</span> ${esc(e.prompt)}</p>` : ""}
+            ${e.gated ? `<p class="text-xs mt-2" style="color:var(--quest)">
+              Stopped here for review — not auto-approved.</p>` : ""}
+            <p class="dim text-[11px] mt-1 mono">data/heal/${esc(e.file)}</p>
+          </div>`).join("")}
+      </div>
+    </div>`).join("");
+}
+
+async function loadCollectors() {
+  const rows = await api("/api/collectors");
+  $("#collector-table").innerHTML = `<div class="surface rounded-lg overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="raised text-xs uppercase dim">
+        <th class="text-left px-4 py-3">Collector</th>
+        <th class="text-left px-4 py-3">ID</th>
+        <th class="text-right px-4 py-3">Runs</th>
+        <th class="text-right px-4 py-3">Failed</th>
+        <th class="text-right px-4 py-3">Rows stored</th>
+        <th class="text-left px-4 py-3">State</th>
+      </tr></thead>
+      <tbody>${rows.map(c => `
+        <tr class="border-t rule ${c.created ? "" : "opacity-45"}">
+          <td class="px-4 py-3">${esc(c.key)}${c.retired
+            ? ` <span class="dim text-xs">— replaced, kept for the record</span>` : ""}</td>
+          <td class="px-4 py-3 mono text-xs" style="color:${c.created ? "var(--accent)" : "var(--dim)"}">
+            ${c.created ? esc(c.collector_id) : "not created"}</td>
+          <td class="px-4 py-3 text-right muted">${c.runs || "—"}</td>
+          <td class="px-4 py-3 text-right" style="color:${c.runs_failed ? "var(--ghost)" : "var(--dim)"}">
+            ${c.runs_failed || "—"}</td>
+          <td class="px-4 py-3 text-right">${c.listings_stored || "—"}</td>
+          <td class="px-4 py-3 text-xs muted">${c.enabled ? "" : "disabled · "}${esc(c.last_status || (c.created ? "—" : "never built"))}</td>
+        </tr>`).join("")}</tbody>
+    </table></div>
+    <p class="dim text-xs mt-3">Failures are kept on purpose, including those of a collector
+      we retired — a runs table showing only successes says nothing about reliability.</p>`;
+}
+
+async function loadSnapshots() {
+  const snaps = await api("/api/snapshots?limit=8");
+  $("#snapshots").innerHTML = `<div class="grid lg:grid-cols-2 gap-4">
+    ${snaps.map(s => `<div class="surface rounded-lg p-4">
+      <div class="flex items-baseline justify-between gap-3 mb-2">
+        <span class="mono text-xs break-all">${esc(s.file)}</span>
+        <span class="dim text-xs whitespace-nowrap">${s.rows} rows · ${(s.bytes/1024).toFixed(1)} KB</span>
+      </div>
+      <p class="dim text-[11px] mb-2">${esc(s.kind)}</p>
+      ${s.sample ? `<pre class="raised rounded p-3 text-[11px] mono overflow-x-auto max-h-44 muted">${
+        esc(JSON.stringify(s.sample, null, 2))}</pre>` : `<p class="dim text-xs">empty — a real observation</p>`}
+    </div>`).join("")}</div>`;
+}
+
+async function start() {
+  try {
+    META = await api("/api/meta");
+    $("#stats").innerHTML =
+      stat(META.assessed, "assessed", "board + careers page both read") +
+      stat(META.not_assessed, "not assessed", "deliberately unscored") +
+      stat(META.career_roles, "careers-page roles", "compared against") +
+      stat(META.collectors_live, "live collectors", "c_* IDs in use") +
+      stat(META.repairs, "self-repairs", "same ID preserved") +
+      stat(META.snapshots, "snapshots", "every response archived");
+
+    $("#bands").innerHTML = META.bands.map(b =>
+      `<span class="flex items-center gap-2"><span class="${BAND[b.label]} px-2 py-0.5 rounded mono text-xs">${b.min}–${b.max}</span>
+       <span class="muted">${esc(b.label)}</span></span>`).join("");
+    $("#unassessed-n").textContent = META.not_assessed;
+    $("#signals").innerHTML = `<p class="sect-num uppercase mb-2">Signals and their weights</p>` +
+      Object.entries(META.signals).map(([s, w]) =>
+        `<span class="inline-block raised border rule px-2 py-1 rounded text-xs mr-1 mb-1 muted">
+          ${esc(s)} <span class="dim">+${w}</span></span>`).join("");
+
+    const board = await api("/api/leaderboard");
+    $("#findings-note").innerHTML = `Only listings whose employer careers page we actually read.
+      ${META.not_assessed} more are <button onclick="showUnassessed()" class="underline hover:text-white">not assessed</button>
+      and carry no score. Click any row for the evidence behind it.`;
+    $("#board").innerHTML = table(board);
+    wire($("#board"));
+
+    await Promise.all([loadCollectors(), loadHeal(), loadSnapshots()]);
+  } catch (err) {
+    document.querySelector("main").innerHTML = `<div class="surface rounded-lg p-6 my-10">
+      <p style="color:var(--ghost)">Could not load: ${esc(err.message)}</p>
+      <p class="muted text-sm mt-2">Is the API running?
+        <span class="mono text-xs">.venv/bin/uvicorn ghosthire.api:app --reload</span></p></div>`;
   }
 }
 
-document.querySelectorAll(".tab").forEach(t =>
-  t.addEventListener("click", () => go(t.dataset.view)));
+// nav highlighting
+const sections = ["findings","method","collectors","output"];
+addEventListener("scroll", () => {
+  let cur = sections[0];
+  for (const id of sections) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top <= 90) cur = id;
+  }
+  document.querySelectorAll(".navlink").forEach(a =>
+    a.classList.toggle("on", a.getAttribute("href") === "#" + cur));
+});
 
-(async function start(){
-  try {
-    META = await api("/api/meta");
-    $("#summary").innerHTML = `
-      <span class="bg-slate-800 px-3 py-1.5 rounded">
-        <strong class="text-slate-100">${META.assessed}</strong>
-        <span class="text-slate-400">assessed</span></span>
-      <span class="bg-slate-800 px-3 py-1.5 rounded">
-        <strong class="text-slate-100">${META.not_assessed}</strong>
-        <span class="text-slate-400">not assessed — no careers-page data</span></span>`;
-  } catch (e) { /* go() reports it */ }
-  go("leaderboard");
-})();
+start();
 </script>
 </body>
 </html>
