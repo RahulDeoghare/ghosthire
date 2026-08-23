@@ -47,6 +47,15 @@ SYNC_TIMEOUT_MAX = 50
 # `data/snapshots/*.json` never matches a partial, empty or abandoned file.
 PART_SUFFIX = ".part"
 
+# How long to keep looking for the CLI's -o file after the process has exited.
+#
+# The write can land *after* exit: a run on 2026-08-23 reported "0 rows,
+# failed" while the snapshot it had just written held three valid rows, its
+# mtime one second past the exit. Reading a moment too early throws away real
+# evidence and mislabels a working collector as broken. Only the path that
+# would otherwise report failure pays this wait.
+OUTPUT_FLUSH_GRACE_S = 1.5
+
 # Collector IDs are remote values that get written into a config file, so they
 # are validated against the documented shape before they touch disk.
 COLLECTOR_ID_RE = re.compile(r"^c_[a-z0-9]+$")
@@ -435,8 +444,26 @@ def extract_errors(payload: Any) -> list[dict[str, Any]]:
 def _read_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
+
+
+def _read_output(path: Path, grace: float | None = None) -> Any:
+    """The CLI's ``-o`` payload, tolerating a flush that lands after exit.
+
+    Returns as soon as the file parses. Waits only when there is nothing to
+    read, which is exactly the case we would otherwise report as a failure.
+    """
+    grace = OUTPUT_FLUSH_GRACE_S if grace is None else grace
+    deadline = time.monotonic() + grace
+    while True:
+        if _has_bytes(path):
+            payload = _read_json(path)
+            if payload is not None:
+                return payload
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.05)
 
 
 def run_collector(
@@ -514,7 +541,7 @@ def run_collector(
         )
     duration = round(time.monotonic() - clock, 1)
 
-    payload = _read_json(part) if _has_bytes(part) else None
+    payload = _read_output(part)
     if payload is None and proc.stdout.strip():
         try:
             payload = json.loads(proc.stdout)
@@ -598,7 +625,7 @@ def create_collector(
     except BdataError:
         discard_snapshot(part)
         raise
-    payload = _read_json(part) if _has_bytes(part) else None
+    payload = _read_output(part)
     if payload is None and proc.stdout.strip():
         try:
             payload = json.loads(proc.stdout)

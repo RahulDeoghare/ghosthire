@@ -12,6 +12,8 @@ import json
 import os
 import stat
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -463,6 +465,35 @@ def test_collector_observations_are_backed_by_a_snapshot():
         )
 
 
+def test_board_observations_record_how_many_rows_were_actually_ours():
+    """A board target's claim is checkable: the named snapshot must exist, and
+    the count of rows genuinely at that company must match what is recorded.
+
+    This is the provenance behind the ingest guard. "3 returned, 0 ours" is the
+    observation that keeps Postman off the leaderboard instead of on it under
+    a false accusation.
+    """
+    from ghosthire.normalize import company_matches
+
+    for collector in bdata.find_collectors(kind="board"):
+        for target in collector.get("targets") or []:
+            if target.get("observed_by") != "collector":
+                continue
+            evidence = target.get("evidence")
+            assert evidence, f"{target['slug']} claims collector data, names no file"
+            path = bdata.SNAPSHOT_DIR.parent.parent / evidence
+            assert path.exists(), f"{target['slug']}: {evidence} is missing"
+
+            rows = bdata.extract_rows(json.loads(path.read_text()))
+            assert len(rows) == target["rows_seen"]
+            ours = sum(1 for r in rows
+                       if company_matches(r.get("company_name"), target["company"]))
+            assert ours == target["rows_at_company"], (
+                f"{target['slug']}: config says {target['rows_at_company']} rows at "
+                f"{target['company']}, snapshot holds {ours}"
+            )
+
+
 def test_http_fetch_observations_never_claim_collector_evidence():
     """A number read off a page by hand must not carry a snapshot citation."""
     for target in bdata.get_collector("career_generic")["targets"]:
@@ -579,6 +610,48 @@ def test_timeout_keeps_whatever_the_cli_managed_to_write(tmp_path, monkeypatch, 
     assert result.snapshot_path is not None and result.snapshot_path.exists()
     assert result.snapshot_path.suffix == ".json"
     assert json.loads(result.snapshot_path.read_text()) == FAKE_ROWS[:1]
+
+
+def test_output_flushed_after_exit_is_still_read(tmp_path, monkeypatch, snapshots):
+    """The CLI can write its -o file after its process exits.
+
+    A live run reported "0 rows, failed" while the snapshot it had just written
+    held three valid rows, its mtime one second past the exit. Reading a moment
+    too early discards real evidence and mislabels a working collector as
+    broken, so the read waits briefly before concluding there is nothing.
+    """
+    monkeypatch.setattr(bdata, "OUTPUT_FLUSH_GRACE_S", 2.0)
+
+    def fake_run(cmd, **kwargs):
+        out = Path(cmd[cmd.index("-o") + 1])
+
+        def write_late():
+            time.sleep(0.3)
+            out.write_text(json.dumps(FAKE_ROWS))
+
+        threading.Thread(target=write_late, daemon=True).start()
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(bdata.shutil, "which", lambda _: "/usr/bin/true")
+    monkeypatch.setattr(bdata.subprocess, "run", fake_run)
+
+    result = bdata.run_collector("c_test1234", ["https://example.test"], "internshala")
+
+    assert result.status == "success"
+    assert result.rows_returned == 2
+    assert result.snapshot_path is not None and result.snapshot_path.exists()
+
+
+def test_the_grace_period_does_not_invent_a_snapshot(tmp_path, monkeypatch, snapshots):
+    """A run that truly wrote nothing must still fail, not hang and then lie."""
+    monkeypatch.setattr(bdata, "OUTPUT_FLUSH_GRACE_S", 0.2)
+    _use(monkeypatch, tmp_path, AUTH_FAIL_CLI)
+
+    result = bdata.run_collector("c_test1234", ["https://example.test"], "internshala")
+
+    assert result.status == "failed"
+    assert result.snapshot_path is None
+    assert list(snapshots.iterdir()) == []
 
 
 def test_rejected_arguments_leave_nothing_on_disk(snapshots):

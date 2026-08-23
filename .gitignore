@@ -4,6 +4,9 @@
 # database — rebuilt from snapshots via `python -m ghosthire.db init`
 *.db
 *.db-journal
+# WAL sidecars, created by the journal_mode=WAL pragma
+*.db-wal
+*.db-shm
 *.sqlite3
 
 # python
