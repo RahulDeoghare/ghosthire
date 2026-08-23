@@ -606,6 +606,38 @@ def cmd_fork(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_db(args: argparse.Namespace) -> int:
+    """Create the database, optionally rebuilding it from the archive.
+
+    `--from-snapshots` is the claim that matters: a reviewer can delete
+    data/ghosthire.db, run this, and reproduce every number in the dashboard
+    without spending a credit or trusting us.
+    """
+    from .db import DB_PATH, connect, init
+    from .pipeline import rebuild
+
+    conn = connect(args.path)
+    init(conn)
+    print(f"schema applied to {_rel(Path(args.path or DB_PATH))}")
+
+    if not args.from_snapshots:
+        return 0
+
+    report = rebuild(conn)
+    print(
+        f"ingested {report.ingested} listing(s) {DOT} "
+        f"{report.rejected} rejected as not-at-company {DOT} "
+        f"{report.scored} assessed {DOT} {report.unassessed} not assessed"
+    )
+    if report.skipped:
+        print(f"  {len(report.skipped)} snapshot(s) not ingested "
+              "(collector-create envelopes, or an unrecognised name)")
+    if report.unassessed:
+        print("  listings with no careers-page data carry NO score, by design — "
+              "absence of evidence is not evidence of absence")
+    return 0
+
+
 def _non_negative_int(raw: str) -> int:
     value = int(raw)
     if value < 0:
@@ -670,6 +702,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_fork.add_argument("--sync", action="store_true")
     p_fork.set_defaults(func=cmd_fork)
+
+    p_db = sub.add_parser("db", help="create or rebuild the database")
+    p_db.add_argument(
+        "--from-snapshots",
+        action="store_true",
+        help="rebuild every listing and score from data/snapshots/ (no network)",
+    )
+    p_db.add_argument("--path", help="database file (default data/ghosthire.db)")
+    p_db.set_defaults(func=cmd_db)
 
     p_create = sub.add_parser("create", help="create one collector via Scraper Studio")
     p_create.add_argument("key")
