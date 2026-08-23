@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GhostHire</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* Score bands. Colour is a shorthand for the band, never the only cue —
+     the numeric score and the band name are always shown next to it. */
+  .band-real  { background:#065f46; color:#d1fae5; }
+  .band-quest { background:#78350f; color:#fef3c7; }
+  .band-ghost { background:#7f1d1d; color:#fee2e2; }
+  .band-none  { background:#334155; color:#cbd5e1; }
+  body { font-feature-settings: "tnum"; }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-200 antialiased">
+
+<header class="border-b border-slate-800">
+  <div class="max-w-6xl mx-auto px-6 py-6">
+    <h1 class="text-2xl font-semibold text-slate-100">GhostHire</h1>
+    <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+      Job listings advertised on a board that the hiring company does not list on
+      its own careers page. Every score cites both URLs and the collector that
+      produced them, so any claim here can be checked in ten seconds.
+    </p>
+    <div id="summary" class="flex flex-wrap gap-3 mt-4 text-xs"></div>
+  </div>
+</header>
+
+<nav class="border-b border-slate-800 sticky top-0 bg-slate-950/95 backdrop-blur z-10">
+  <div class="max-w-6xl mx-auto px-6 flex gap-1">
+    <button data-view="leaderboard" class="tab px-4 py-3 text-sm border-b-2">Leaderboard</button>
+    <button data-view="unassessed"  class="tab px-4 py-3 text-sm border-b-2">Not assessed</button>
+    <button data-view="collectors"  class="tab px-4 py-3 text-sm border-b-2">Collectors</button>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+  <div id="view"></div>
+</main>
+
+<!-- Evidence view. Opens over the list; both sources side by side. -->
+<div id="detail" class="hidden fixed inset-0 bg-black/70 z-20 overflow-y-auto">
+  <div class="max-w-4xl mx-auto my-10 bg-slate-900 border border-slate-700 rounded-lg">
+    <div id="detail-body" class="p-6"></div>
+  </div>
+</div>
+
+<script>
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const BAND = { "likely real":"band-real", "questionable":"band-quest", "likely ghost":"band-ghost" };
+let META = null;
+
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  return r.json();
+}
+
+function scoreBadge(row) {
+  // An unassessed listing has no score. It gets a dash and a neutral chip —
+  // never a 0, which would read as "we checked and it is fine".
+  if (!row.assessed) {
+    return `<span class="band-none px-2 py-1 rounded text-xs font-mono">—</span>`;
+  }
+  return `<span class="${BAND[row.band] || "band-none"} px-2 py-1 rounded text-xs font-mono font-semibold">${row.ghost_score}</span>`;
+}
+
+function signalChips(signals) {
+  if (!signals || !signals.length) return `<span class="text-slate-500 text-xs">no signals triggered</span>`;
+  return signals.map(s => {
+    const w = META?.signals?.[s];
+    return `<span class="inline-block bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-xs mr-1 mb-1">
+      ${esc(s)}${w ? ` <span class="text-slate-500">+${w}</span>` : ""}</span>`;
+  }).join("");
+}
+
+function dateCell(row) {
+  if (!row.date_posted) {
+    // 28% of board rows carry no date at all. Saying "unknown" is the honest
+    // rendering; a blank cell reads as though we simply forgot to show it.
+    return `<span class="text-slate-500 text-xs" title="no posting date on the listing">unknown</span>`;
+  }
+  const approx = row.date_confidence === "relative";
+  return `<span class="text-xs text-slate-400" title="${approx ? "derived from a relative date such as '3 weeks ago' — accurate to about a week" : "read from the listing"}">
+    ${approx ? "~" : ""}${esc(row.date_posted)}</span>`;
+}
+
+function rowsTable(rows, opts={}) {
+  if (!rows.length) return `<p class="text-slate-500">Nothing here yet.</p>`;
+  return `
+  <div class="overflow-x-auto border border-slate-800 rounded-lg">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-900 text-slate-400 text-xs uppercase">
+        <tr>
+          <th class="text-left px-4 py-3 w-16">Score</th>
+          <th class="text-left px-4 py-3">Company</th>
+          <th class="text-left px-4 py-3">Role</th>
+          <th class="text-left px-4 py-3">Posted</th>
+          <th class="text-left px-4 py-3">${opts.unassessed ? "Why not assessed" : "Signals"}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-800">
+        ${rows.map(r => `
+          <tr class="hover:bg-slate-900 cursor-pointer" data-id="${r.id}">
+            <td class="px-4 py-3">${scoreBadge(r)}</td>
+            <td class="px-4 py-3 font-medium text-slate-200">${esc(r.company)}</td>
+            <td class="px-4 py-3 text-slate-300">${esc(r.job_title)}</td>
+            <td class="px-4 py-3">${dateCell(r)}</td>
+            <td class="px-4 py-3">${opts.unassessed
+              ? `<span class="text-slate-500 text-xs">no careers-page data for this company</span>`
+              : signalChips(r.signals)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+async function viewLeaderboard() {
+  const rows = await api("/api/leaderboard");
+  $("#view").innerHTML = `
+    <p class="text-sm text-slate-400 mb-4">
+      Ranked by ghost score. Only listings whose company careers page we actually
+      read appear here — ${META.not_assessed} others are
+      <button class="underline text-slate-300" onclick="go('unassessed')">not assessed</button>
+      and carry no score.
+    </p>
+    ${rowsTable(rows)}
+    <div class="mt-6 flex flex-wrap gap-4 text-xs text-slate-500">
+      ${META.bands.map(b => `<span><span class="${BAND[b.label]} px-2 py-0.5 rounded font-mono mr-1">${b.min}–${b.max}</span>${b.label}</span>`).join("")}
+    </div>`;
+  wireRows();
+}
+
+async function viewUnassessed() {
+  const rows = await api("/api/listings?assessed=false&limit=500");
+  $("#view").innerHTML = `
+    <div class="border border-slate-800 bg-slate-900/50 rounded-lg p-4 mb-5">
+      <h2 class="text-slate-200 font-medium mb-1">Not assessed — and deliberately unscored</h2>
+      <p class="text-sm text-slate-400">
+        We have no careers-page data for these companies, so we cannot say whether
+        a listing is missing from one. Absence of evidence is not evidence of
+        absence: scoring these would mean accusing ${rows.length} employers on the
+        strength of data we never collected. They are shown, and left blank.
+      </p>
+    </div>
+    ${rowsTable(rows, {unassessed:true})}`;
+  wireRows();
+}
+
+async function viewCollectors() {
+  const rows = await api("/api/collectors");
+  $("#view").innerHTML = `
+    <p class="text-sm text-slate-400 mb-4">
+      Every collector this project defines. A <code class="text-slate-300">c_*</code>
+      ID is the Bright Data Scraper Studio collector that produced the rows counted
+      beside it; collectors that were never created are shown as such rather than
+      hidden.
+    </p>
+    <div class="overflow-x-auto border border-slate-800 rounded-lg">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900 text-slate-400 text-xs uppercase">
+          <tr>
+            <th class="text-left px-4 py-3">Key</th>
+            <th class="text-left px-4 py-3">Collector ID</th>
+            <th class="text-left px-4 py-3">Kind</th>
+            <th class="text-right px-4 py-3">Targets</th>
+            <th class="text-right px-4 py-3">Listings stored</th>
+            <th class="text-left px-4 py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800">
+          ${rows.map(c => `
+            <tr class="${c.created ? "" : "opacity-50"}">
+              <td class="px-4 py-3 text-slate-200">${esc(c.key)}</td>
+              <td class="px-4 py-3 font-mono text-xs ${c.created ? "text-emerald-300" : "text-slate-500"}">
+                ${c.created ? esc(c.collector_id) : "not created"}</td>
+              <td class="px-4 py-3 text-slate-400">${esc(c.kind)}</td>
+              <td class="px-4 py-3 text-right text-slate-400">${c.targets}</td>
+              <td class="px-4 py-3 text-right text-slate-300">${c.listings_stored}</td>
+              <td class="px-4 py-3 text-xs text-slate-400">
+                ${c.enabled ? "" : "disabled · "}${esc(c.last_status || (c.created ? "no run recorded" : "—"))}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function openDetail(id) {
+  const d = await api(`/api/listings/${id}`);
+  const matched = d.matched_career_listing;
+  $("#detail-body").innerHTML = `
+    <div class="flex justify-between items-start gap-4 mb-5">
+      <div>
+        <div class="flex items-center gap-3">
+          ${scoreBadge(d)}
+          <h2 class="text-lg font-semibold text-slate-100">${esc(d.job_title)}</h2>
+        </div>
+        <p class="text-slate-400 text-sm mt-1">${esc(d.company)} · ${esc(d.location || "location not stated")}</p>
+      </div>
+      <button onclick="closeDetail()" class="text-slate-400 hover:text-slate-200 text-xl leading-none">&times;</button>
+    </div>
+
+    ${d.assessed ? "" : `
+      <div class="border border-slate-700 bg-slate-800/50 rounded p-3 mb-5 text-sm text-slate-300">
+        <strong>Not assessed.</strong> We have no careers-page data for
+        ${esc(d.company)}, so this listing has no score. It is not evidence of a
+        ghost job, and it is not evidence of a real one.
+      </div>`}
+
+    <div class="grid md:grid-cols-2 gap-4 mb-5">
+      <div class="border border-slate-800 rounded p-4">
+        <h3 class="text-xs uppercase text-slate-500 mb-2">On the job board</h3>
+        <p class="text-slate-200">${esc(d.job_title)}</p>
+        <p class="text-slate-400 text-sm mt-1">Posted: ${d.date_posted ? esc(d.date_posted) : "not stated on the listing"}</p>
+        ${d.salary_range ? `<p class="text-slate-400 text-sm">${esc(d.salary_range)}</p>` : ""}
+        <a href="${esc(d.board_url)}" target="_blank" rel="noopener"
+           class="text-sky-400 hover:underline text-sm mt-2 inline-block break-all">open the board listing →</a>
+      </div>
+      <div class="border border-slate-800 rounded p-4">
+        <h3 class="text-xs uppercase text-slate-500 mb-2">On the company careers page</h3>
+        ${matched
+          ? `<p class="text-emerald-300">${esc(matched.job_title)}</p>
+             <p class="text-slate-400 text-sm mt-1">matched${d.match_confidence != null
+               ? ` at ${(d.match_confidence*100).toFixed(0)}% confidence` : ""}</p>
+             <a href="${esc(matched.career_url)}" target="_blank" rel="noopener"
+                class="text-sky-400 hover:underline text-sm mt-2 inline-block break-all">open the careers-page role →</a>`
+          : d.assessed
+            ? `<p class="text-red-300">No matching role found.</p>
+               <p class="text-slate-400 text-sm mt-1">We read this company's careers page and none of its
+                  ${d.career_page_roles.length} open roles matched this title.</p>`
+            : `<p class="text-slate-500">We have not read this company's careers page.</p>`}
+      </div>
+    </div>
+
+    <div class="mb-5">
+      <h3 class="text-xs uppercase text-slate-500 mb-2">Signals</h3>
+      ${signalChips(d.signals)}
+    </div>
+
+    ${d.career_page_roles.length ? `
+      <details class="mb-5">
+        <summary class="text-xs uppercase text-slate-500 cursor-pointer">
+          Checked against all ${d.career_page_roles.length} careers-page roles
+        </summary>
+        <ul class="mt-2 space-y-1 max-h-56 overflow-y-auto">
+          ${d.career_page_roles.map(r => `
+            <li class="text-sm text-slate-400">
+              <a href="${esc(r.career_url)}" target="_blank" rel="noopener"
+                 class="hover:text-sky-400">${esc(r.job_title)}</a></li>`).join("")}
+        </ul>
+      </details>` : ""}
+
+    <p class="text-xs text-slate-500 border-t border-slate-800 pt-3">
+      Collected by <code class="text-slate-400">${esc(d.collector_id || "unknown")}</code>
+      · source <code class="text-slate-400">${esc(d.source)}</code>
+    </p>`;
+  $("#detail").classList.remove("hidden");
+}
+
+function closeDetail(){ $("#detail").classList.add("hidden"); }
+$("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeDetail(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
+
+function wireRows() {
+  document.querySelectorAll("tr[data-id]").forEach(tr =>
+    tr.addEventListener("click", () => openDetail(tr.dataset.id)));
+}
+
+const VIEWS = { leaderboard: viewLeaderboard, unassessed: viewUnassessed, collectors: viewCollectors };
+
+async function go(name) {
+  document.querySelectorAll(".tab").forEach(t => {
+    const on = t.dataset.view === name;
+    t.className = `tab px-4 py-3 text-sm border-b-2 ${on
+      ? "border-sky-400 text-slate-100" : "border-transparent text-slate-400 hover:text-slate-200"}`;
+  });
+  $("#view").innerHTML = `<p class="text-slate-500">Loading…</p>`;
+  try { await VIEWS[name](); }
+  catch (err) {
+    $("#view").innerHTML = `<div class="border border-red-900 bg-red-950/40 rounded p-4">
+      <p class="text-red-300">Could not load: ${esc(err.message)}</p>
+      <p class="text-slate-400 text-sm mt-1">Is the API running?
+        <code class="text-slate-300">uvicorn ghosthire.api:app --reload</code></p></div>`;
+  }
+}
+
+document.querySelectorAll(".tab").forEach(t =>
+  t.addEventListener("click", () => go(t.dataset.view)));
+
+(async function start(){
+  try {
+    META = await api("/api/meta");
+    $("#summary").innerHTML = `
+      <span class="bg-slate-800 px-3 py-1.5 rounded">
+        <strong class="text-slate-100">${META.assessed}</strong>
+        <span class="text-slate-400">assessed</span></span>
+      <span class="bg-slate-800 px-3 py-1.5 rounded">
+        <strong class="text-slate-100">${META.not_assessed}</strong>
+        <span class="text-slate-400">not assessed — no careers-page data</span></span>`;
+  } catch (e) { /* go() reports it */ }
+  go("leaderboard");
+})();
+</script>
+</body>
+</html>
