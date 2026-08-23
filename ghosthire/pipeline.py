@@ -114,8 +114,21 @@ def plan_snapshot(path: Path, doc: dict[str, Any]) -> SnapshotPlan | None:
 
 
 def rebuild(conn: sqlite3.Connection, quiet: bool = False) -> RebuildReport:
+    """Rebuild every listing and score from the archive.
+
+    Starts by clearing both tables. "Delete the database, run this, get the
+    same numbers" is the provenance claim, and re-running against a populated
+    database instead accumulated observation_count — 6 after three rebuilds —
+    so the same archive produced a different database each time.
+
+    ghost_scores goes first: it holds foreign keys into job_listings.
+    """
     doc = load_collectors()
     report = RebuildReport()
+
+    conn.execute("DELETE FROM ghost_scores")
+    conn.execute("DELETE FROM job_listings")
+    conn.commit()
 
     for path, payload in iter_snapshots():
         plan = plan_snapshot(path, doc)
