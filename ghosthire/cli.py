@@ -239,18 +239,10 @@ def _rel(path: Path | None) -> str:
 def cmd_scrape(args: argparse.Namespace) -> int:
     doc = load_collectors()
 
+    # `career` is an alias for the one generic career collector; every other
+    # source is looked up by its `source:` field.
     if args.source == "career":
-        collector = get_collector("career_generic", doc)
-        targets = collector.get("targets") or []
-        if args.company:
-            targets = [t for t in targets if t.get("slug") == args.company]
-            if not targets:
-                slugs = ", ".join(
-                    t.get("slug", "?") for t in collector.get("targets") or []
-                )
-                _warn(f"no career target with slug {args.company!r}. Known: {slugs}")
-                return 2
-        collectors = [(collector, targets)]
+        matches = [get_collector("career_generic", doc)]
     else:
         matches = [
             c for c in find_collectors(source=args.source, doc=doc)
@@ -259,7 +251,27 @@ def cmd_scrape(args: argparse.Namespace) -> int:
         if not matches:
             _warn(f"no enabled collector for source {args.source!r}")
             return 2
-        collectors = [(c, c.get("targets") or []) for c in matches]
+
+    # ---- --company filters slugged targets for ANY source, not just career.
+    # The board is scraped per company (one filtered URL each) because the
+    # front-page sweep and the career targets are disjoint populations, and a
+    # matcher needs the same company on both sides to have anything to do.
+    collectors = []
+    for collector in matches:
+        targets = collector.get("targets") or []
+        if args.company:
+            picked = [t for t in targets if t.get("slug") == args.company]
+            if not picked:
+                slugs = ", ".join(
+                    t["slug"] for t in targets if t.get("slug")
+                ) or "(this collector's targets have no slugs)"
+                _warn(
+                    f"no target with slug {args.company!r} in "
+                    f"{collector['key']}. Known: {slugs}"
+                )
+                return 2
+            targets = picked
+        collectors.append((collector, targets))
 
     # ---- A collector that has no c_* ID yet was never created; it did not
     # fail. Counting it as a failure made the P1 acceptance command exit 1 on a
@@ -287,8 +299,8 @@ def cmd_scrape(args: argparse.Namespace) -> int:
             continue
 
         source = collector["source"]
-        if args.source == "career" and args.company:
-            source = f"career_{args.company}"
+        if args.company:
+            source = f"{source}_{args.company}"
 
         try:
             print(
@@ -663,9 +675,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_scrape.add_argument(
         "--source",
         required=True,
-        help="internshala | secondary | career (career reads --company)",
+        help="internshala | board_company | career "
+             "(board_company and career read --company)",
     )
-    p_scrape.add_argument("--company", help="career target slug, e.g. razorpay")
+    p_scrape.add_argument(
+        "--company", help="target slug for this source, e.g. razorpay"
+    )
     p_scrape.add_argument(
         "--limit", type=_non_negative_int, default=20, help="rows to print"
     )

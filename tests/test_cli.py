@@ -342,6 +342,59 @@ def test_scrape_still_fails_when_nothing_can_run(monkeypatch, capsys):
     assert "no created collector" in capsys.readouterr().err
 
 
+def _board_company_doc():
+    """A board collector whose targets are per-company filtered URLs."""
+    return {
+        "descriptions": {"board": "extract the jobs"},
+        "collectors": [
+            {"key": "board_company", "kind": "board", "source": "board_company",
+             "collector_id": "c_made1234", "description": "extract the jobs",
+             "targets": [
+                 {"slug": "razorpay", "company": "Razorpay",
+                  "url": "https://internshala.com/jobs/keywords-razorpay"},
+                 {"slug": "swiggy", "company": "Swiggy",
+                  "url": "https://internshala.com/jobs/keywords-swiggy"},
+             ]},
+        ],
+    }
+
+
+def test_company_filters_targets_for_a_board_source_too(monkeypatch, capsys):
+    """--company was career-only, so the board could only be scraped as a
+    firehose. The front page and the career targets are disjoint populations,
+    so a matcher needs the board filtered to the same company."""
+    monkeypatch.setattr(cli, "load_collectors", lambda *a, **k: _board_company_doc())
+    seen = {}
+
+    from ghosthire.bdata import RunResult
+
+    def fake_run(collector_id, urls, source, **kwargs):
+        seen["urls"] = urls
+        seen["source"] = source
+        return RunResult(collector_id, source, urls, "success",
+                         rows=[{"company_name": "Razorpay",
+                                "job_title": "Associate, Startup Accounts"}])
+
+    monkeypatch.setattr(cli, "run_collector", fake_run)
+
+    code = cli.main(["scrape", "--source", "board_company", "--company", "razorpay"])
+
+    assert code == 0
+    assert seen["urls"] == ["https://internshala.com/jobs/keywords-razorpay"]
+    # The snapshot name has to say which company it covers, or two runs of the
+    # same collector are indistinguishable on disk.
+    assert seen["source"] == "board_company_razorpay"
+
+
+def test_unknown_company_slug_lists_the_known_ones(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_collectors", lambda *a, **k: _board_company_doc())
+
+    assert cli.main(["scrape", "--source", "board_company",
+                     "--company", "nosuchco"]) == 2
+    err = capsys.readouterr().err
+    assert "razorpay" in err and "swiggy" in err
+
+
 def test_a_failed_run_still_fails_the_command(monkeypatch, capsys):
     monkeypatch.setattr(cli, "load_collectors", lambda *a, **k: _two_collector_doc())
     _stub_runs(monkeypatch, [{"status": "failed", "error": "No API key found"}])
