@@ -11,3 +11,4 @@ PyYAML==6.0.3          # collectors.yaml; also arrives via uvicorn[standard]
 # dev
 pytest==9.1.1
 ruff==0.9.6
+httpx2==2.12.0         # FastAPI TestClient (httpx is deprecated for it)
