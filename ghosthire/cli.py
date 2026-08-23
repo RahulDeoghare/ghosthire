@@ -35,39 +35,17 @@ from .bdata import (
 
 DOT = "·"
 
-# Collector output field names vary by target; accept the obvious synonyms
-# rather than losing a row to a naming difference.
-FIELD_ALIASES = {
-    "company": ("company_name", "company", "employer", "organisation", "organization"),
-    "title": ("job_title", "title", "role", "position"),
-    "location": ("location", "job_location", "city", "place"),
-    "posted": ("date_posted", "posted", "posted_date", "posted_on", "date"),
-    "url": ("job_url", "url", "link", "job_link", "apply_url"),
-    "department": ("department", "team", "function", "category"),
-}
+# Field aliases and the value scrubber live in fields.py so the terminal and
+# the ingest path read a row identically. `_clean` and `_scalar` are re-exported
+# because the create path and the snapshot viewer scrub remote text too.
+from .fields import (  # noqa: E402
+    FIELD_ALIASES,
+    _clean,
+    _scalar,
+    pick,
+)
 
-
-# Scraped values reach the operator's terminal directly, so control bytes are
-# stripped: an escape sequence in a job title would otherwise repaint or clear
-# the screen of whoever runs this.
-_CONTROL_CHARS: dict[int, str | None] = {
-    **{c: None for c in range(0x20)},
-    **{c: None for c in range(0x7F, 0xA0)},
-    # Whitespace controls separate words; deleting them would weld the words
-    # either side together ("Backend\nEngineer" -> "BackendEngineer").
-    0x09: " ", 0x0A: " ", 0x0B: " ", 0x0C: " ", 0x0D: " ",
-}
-
-
-def _clean(text: str) -> str:
-    """Strip control bytes and flatten whitespace in remote text.
-
-    Everything Bright Data returns — row values *and* the create envelope's
-    name/status fields — reaches the operator's terminal, so it all goes
-    through here. An escape sequence in a job title would otherwise repaint or
-    clear the screen of whoever runs this.
-    """
-    return " ".join(text.translate(_CONTROL_CHARS).split())
+__all__ = ["FIELD_ALIASES", "pick", "main", "build_parser"]
 
 
 def _warn(message: str) -> None:
@@ -81,35 +59,6 @@ def _warn(message: str) -> None:
     sys.stdout.flush()
     print(message, file=sys.stderr)
     sys.stderr.flush()
-
-
-def _scalar(value: Any) -> str:
-    """Render a collector value as flat text, or nothing.
-
-    Collector output is remote JSON and a field can come back as a list or an
-    object. Passing those through ``str()`` would print a Python repr into a
-    job table, which reads like data but is not.
-    """
-    if isinstance(value, str):
-        return value
-    if isinstance(value, bool) or value is None:
-        return ""
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, (list, tuple)):
-        return ", ".join(part for part in (_scalar(v) for v in value) if part)
-    return ""
-
-
-def pick(row: dict[str, Any], field: str) -> str:
-    for key in FIELD_ALIASES[field]:
-        value = row.get(key)
-        if value in (None, "", [], {}):
-            continue
-        text = _clean(_scalar(value))
-        if text:
-            return text
-    return ""
 
 
 def _display_width(text: str) -> int:
