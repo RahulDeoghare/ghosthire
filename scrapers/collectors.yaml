@@ -126,6 +126,9 @@ collectors:
         observed_by: collector
         observed_on: 2026-08-23
         rows_seen: 3
+        # All three are genuinely at Razorpay — contrast postman below, where
+        # the same search returns three rows and none of them are ours.
+        rows_at_company: 3
         evidence: data/snapshots/20260823T070130Z_board-razorpay.json
       # Unverified: these have career pages configured but their board presence
       # has not been checked with a collector run. A plain fetch of the filtered
@@ -149,10 +152,21 @@ collectors:
       - slug: postman
         company: Postman
         url: https://internshala.com/jobs/keywords-postman
-        observed_by: null
-        observed_on: null
-        rows_seen: null
-        evidence: null
+        # THE AMBIGUOUS KEYWORD, and the reason ingest guards on company.
+        # This search is full text, not a company filter. It returns rows whose
+        # job descriptions mention Postman the API tool: Stitch, Stayin
+        # Bangalore and The ProEducator, none of them Postman. Ingested as
+        # Postman listings they would match nothing on Postman's careers page
+        # and be published as ghost jobs at a named real company.
+        #
+        # "3 returned, 0 ours" is a real observation and is recorded as one.
+        # Postman's correct place in this project is absent from the
+        # leaderboard, not accused on it.
+        observed_by: collector
+        observed_on: 2026-08-23
+        rows_seen: 3
+        rows_at_company: 0
+        evidence: data/snapshots/20260823T071948Z_board-company-postman.json
 
   - key: board_internshala_intern
     kind: board

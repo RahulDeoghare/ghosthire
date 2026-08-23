@@ -17,6 +17,10 @@ ROOT = Path(__file__).resolve().parent.parent
 RAZORPAY_BOARD = ROOT / "data/snapshots/20260823T070349Z_board-company-razorpay.json"
 RAZORPAY_CAREER = ROOT / "data/snapshots/20260821T183126Z_career-razorpay.json"
 POSTMAN_FIXTURE = ROOT / "data/fixtures/board_postman_false_positives.json"
+# Real collector output for the same search, landed 2026-08-23. Primary
+# evidence; the fixture stays because a live search result changes over time
+# and a unit test should not.
+POSTMAN_LIVE = ROOT / "data/snapshots/20260823T071948Z_board-company-postman.json"
 
 
 @pytest.fixture
@@ -53,6 +57,19 @@ def test_rows_not_at_the_target_company_never_reach_the_database(conn):
     assert conn.execute("SELECT COUNT(*) FROM job_listings").fetchone()[0] == 0
     # The names are kept so an operator can see WHY a target sheds its rows.
     assert set(result.rejected_names) == {"Stayin Bangalore", "Stitch", "The ProEducator"}
+
+
+@pytest.mark.skipif(not POSTMAN_LIVE.exists(), reason="live snapshot not present")
+def test_the_guard_holds_against_real_collector_output(conn):
+    """Not a fixture: this is what the collector actually returned for
+    /jobs/keywords-postman. Three rows, none of them Postman."""
+    result = ingest.ingest_rows(
+        conn, _rows(POSTMAN_LIVE), source="board_company",
+        company="Postman", slug="postman", collector_id="c_mt1senswibym6o5va",
+    )
+    assert result.accepted == 0
+    assert result.rejected_company == 3
+    assert conn.execute("SELECT COUNT(*) FROM job_listings").fetchone()[0] == 0
 
 
 def test_the_drop_count_is_reported_not_swallowed(conn):

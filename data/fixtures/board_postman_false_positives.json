@@ -1,6 +1,6 @@
 {
   "_fixture": true,
-  "_note": "HAND-WRITTEN, NOT COLLECTOR OUTPUT. Two live runs of `scrape --source board_company --company postman` failed with transient Bright Data fetch errors on 2026-08-23, so this stands in for that snapshot until a real one lands. The three company names are real: they were read from https://internshala.com/jobs/keywords-postman by plain HTTP fetch on 2026-08-23, and not one of them is Postman. They come back for the keyword 'postman' because their job descriptions mention the API tool. The job_url values are placeholders and must not be presented as evidence of anything.",
+  "_note": "HAND-WRITTEN, NOT COLLECTOR OUTPUT. Real collector output for the same search now exists at data/snapshots/20260823T071948Z_board-company-postman.json and is the primary evidence; this file is kept only as a stable test input, because a live search result changes over time and a unit test should not. The three company names are real: they were read from https://internshala.com/jobs/keywords-postman by plain HTTP fetch on 2026-08-23, and not one of them is Postman. They come back for the keyword 'postman' because their job descriptions mention the API tool. The job_url values are placeholders and must not be presented as evidence of anything.",
   "_source_url": "https://internshala.com/jobs/keywords-postman",
   "_observed_by": "http_fetch",
   "_observed_on": "2026-08-23",
