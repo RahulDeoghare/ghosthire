@@ -1,0 +1,8 @@
+[
+  {
+    "input": {
+      "url": "https://internshala.com/jobs/keywords-freshworks"
+    },
+    "error": "Crawler error: waiting for selector \"[id^=\"individual_internship_\"]\" failed: timeout 30000ms exceeded"
+  }
+]

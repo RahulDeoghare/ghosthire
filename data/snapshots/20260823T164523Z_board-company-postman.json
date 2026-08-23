@@ -1,0 +1,33 @@
+[
+  {
+    "company_name": "Stitch",
+    "job_title": "Junior Product Analyst",
+    "location": "Chennai",
+    "job_url": "https://internshala.com/job/detail/fresher-junior-product-analyst-job-in-chennai-at-stitch1785315246",
+    "salary_range": "₹ 5,00,000",
+    "date_posted": "3 weeks ago",
+    "input": {
+      "url": "https://internshala.com/jobs/keywords-postman"
+    }
+  },
+  {
+    "company_name": "Stayin Bangalore",
+    "job_title": "Full Stack Developer",
+    "location": "Bangalore (Hybrid)",
+    "job_url": "https://internshala.com/job/detail/fresher-full-stack-developer-job-in-bangalore-at-stayin-bangalore1787230697",
+    "salary_range": "₹ 2,20,000 - 2,80,000",
+    "input": {
+      "url": "https://internshala.com/jobs/keywords-postman"
+    }
+  },
+  {
+    "company_name": "The ProEducator",
+    "job_title": "Backend Developer (Node.js + Express)",
+    "location": "Work from home",
+    "job_url": "https://internshala.com/internship/detail/work-from-home-part-time-backend-developer-nodejs-express-internship-at-the-proeducator1785758895",
+    "date_posted": "2 weeks ago",
+    "input": {
+      "url": "https://internshala.com/jobs/keywords-postman"
+    }
+  }
+]

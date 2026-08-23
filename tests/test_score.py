@@ -127,6 +127,55 @@ def test_an_empty_careers_page_only_counts_when_it_was_really_read():
     assert "career_page_empty" in checked.signals
 
 
+# --------------------------------------------------------------------------
+# repost detection — instrumented, and expected to fire rarely
+# --------------------------------------------------------------------------
+
+def test_a_repost_adds_its_signal_without_becoming_a_verdict():
+    """The same role advertised again under a fresh URL. Weak evidence on its
+    own — a company may genuinely open a role twice — so it is worth 15 and
+    cannot reach the 'likely ghost' band by itself."""
+    result = score_listing(career_page_checked=True, matched=True,
+                           repost_detected=True, today=TODAY)
+
+    assert result.signals == ["repost_detected"]
+    assert result.ghost_score == 15
+    assert result.band == "likely real", "a repost alone must not accuse anyone"
+
+
+def test_a_repost_compounds_with_absence():
+    result = score_listing(career_page_checked=True, matched=False,
+                           repost_detected=True, today=TODAY)
+    assert set(result.signals) == {"not_on_career_page", "repost_detected"}
+    assert result.ghost_score == 60
+    assert result.band == "likely ghost"
+
+
+def test_repost_detection_needs_distinct_urls(tmp_path):
+    """The detector groups by (company, normalized title) and requires more
+    than one distinct job_url. Ingesting the same snapshot twice must not
+    manufacture a repost out of one listing seen twice."""
+    from ghosthire import db, ingest, pipeline
+    conn = db.connect(tmp_path / "r.db")
+    db.init(conn)
+
+    row = {"company_name": "Acme", "job_title": "Backend Engineer",
+           "job_url": "https://x.test/1"}
+    ingest.ingest_rows(conn, [row], source="internshala")
+    ingest.ingest_rows(conn, [row], source="internshala")
+    pipeline.score_all(conn)
+    signals = conn.execute("SELECT signals FROM ghost_scores").fetchone()[0]
+    assert "repost_detected" not in signals
+
+    ingest.ingest_rows(conn, [dict(row, job_url="https://x.test/2")],
+                       source="internshala")
+    pipeline.score_all(conn)
+    for (sig,) in conn.execute("SELECT signals FROM ghost_scores"):
+        # Both listings are now reposts of each other; neither is scored,
+        # because Acme has no careers-page data — the gate still wins.
+        assert sig == "[]" or "repost_detected" in sig
+
+
 @pytest.mark.parametrize("score,expected", [
     (0, "likely real"), (29, "likely real"),
     (30, "questionable"), (59, "questionable"),

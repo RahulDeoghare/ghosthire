@@ -72,10 +72,21 @@
 
   <!-- ── the final product ────────────────────────────────────────────── -->
   <section id="findings" class="pt-14 pb-4">
-    <p class="sect-num uppercase mb-2">01 — Findings</p>
-    <h2 class="text-2xl font-semibold tracking-tight">Listings ranked by ghost score</h2>
+    <p class="sect-num uppercase mb-2">01 — Job listings</p>
+    <h2 class="text-2xl font-semibold tracking-tight">Search the listings, and see which hold up</h2>
     <p class="mt-2 muted text-sm max-w-3xl" id="findings-note"></p>
-    <div id="board" class="mt-6"></div>
+
+    <div class="mt-6 flex flex-col sm:flex-row gap-3">
+      <input id="q" type="search" placeholder="Search role, company or location…"
+        class="surface rounded-lg px-4 py-2.5 text-sm w-full sm:max-w-md outline-none"
+        style="color:var(--text)" autocomplete="off">
+      <select id="company-filter" class="surface rounded-lg px-3 py-2.5 text-sm outline-none"
+        style="color:var(--text)"></select>
+    </div>
+    <div id="filters" class="mt-3 flex flex-wrap gap-2"></div>
+
+    <p id="result-count" class="mt-4 text-xs dim"></p>
+    <div id="board" class="mt-2"></div>
     <div id="bands" class="mt-5 flex flex-wrap gap-5 text-xs"></div>
   </section>
 
@@ -334,6 +345,68 @@ function stat(n, label, hint) {
     ${hint ? `<p class="text-[11px] dim mt-1">${hint}</p>` : ""}</div>`;
 }
 
+// Every listing, fetched once. 70 rows filter faster in the page than over
+// the wire, and it keeps the search responsive on each keystroke.
+let ALL = [];
+let FILTER = "all";
+
+const FILTERS = [
+  ["all",       "All listings",     r => true],
+  ["ghost",     "Ghost candidates", r => r.assessed && r.ghost_score >= 30],
+  ["confirmed", "Confirmed real",   r => r.assessed && r.ghost_score < 30],
+  ["unchecked", "Unverifiable",     r => !r.assessed],
+];
+
+function matches(row, q) {
+  if (!q) return true;
+  const hay = `${row.company} ${row.job_title} ${row.location || ""}`.toLowerCase();
+  return q.toLowerCase().split(/\s+/).every(t => hay.includes(t));
+}
+
+function renderBoard() {
+  const q = $("#q").value.trim();
+  const company = $("#company-filter").value;
+  const test = (FILTERS.find(f => f[0] === FILTER) || FILTERS[0])[2];
+
+  let rows = ALL.filter(r => test(r) && matches(r, q));
+  if (company) rows = rows.filter(r => r.company === company);
+
+  // Assessed first and worst-first within that, so a scan starts where the
+  // evidence is. Unverifiable listings sort last rather than being hidden.
+  rows.sort((a, b) => (b.assessed - a.assessed)
+    || ((b.ghost_score ?? -1) - (a.ghost_score ?? -1))
+    || a.company.localeCompare(b.company));
+
+  const verified = rows.filter(r => r.assessed).length;
+  $("#result-count").textContent =
+    `${rows.length} listing${rows.length === 1 ? "" : "s"}` +
+    (rows.length ? ` · ${verified} checked against the employer's careers page` : "");
+  $("#board").innerHTML = rows.length
+    ? table(rows)
+    : `<div class="surface rounded-lg p-6 dim text-sm">No listing matches that search.</div>`;
+  wire($("#board"));
+
+  document.querySelectorAll("[data-filter]").forEach(b =>
+    b.className = `px-3 py-1.5 rounded-full text-xs border rule ${
+      b.dataset.filter === FILTER ? "raised text-slate-100" : "muted hover:text-slate-200"}`);
+}
+
+function buildBrowser() {
+  $("#filters").innerHTML = FILTERS.map(([key, label, test]) =>
+    `<button data-filter="${key}" class="px-3 py-1.5 rounded-full text-xs border rule muted">
+      ${label} <span class="dim">${ALL.filter(test).length}</span></button>`).join("");
+  document.querySelectorAll("[data-filter]").forEach(b =>
+    b.addEventListener("click", () => { FILTER = b.dataset.filter; renderBoard(); }));
+
+  const companies = [...new Set(ALL.map(r => r.company))].sort();
+  $("#company-filter").innerHTML = `<option value="">All employers (${companies.length})</option>` +
+    companies.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+
+  $("#q").addEventListener("input", renderBoard);
+  $("#company-filter").addEventListener("change", renderBoard);
+  renderBoard();
+}
+
 async function showUnassessed() {
   const el = $("#unassessed");
   if (!el.classList.contains("hidden")) { el.classList.add("hidden"); return; }
@@ -479,12 +552,12 @@ async function start() {
         `<span class="inline-block raised border rule px-2 py-1 rounded text-xs mr-1 mb-1 muted">
           ${esc(s)} <span class="dim">+${w}</span></span>`).join("");
 
-    const board = await api("/api/leaderboard");
-    $("#findings-note").innerHTML = `Only listings whose employer careers page we actually read.
-      ${META.not_assessed} more are <button onclick="showUnassessed()" class="underline hover:text-white">not assessed</button>
-      and carry no score. Click any row for the evidence behind it.`;
-    $("#board").innerHTML = table(board);
-    wire($("#board"));
+    ALL = await api("/api/listings?limit=500");
+    $("#findings-note").innerHTML = `Every listing we collected, searchable. A score means we
+      read that employer's careers page and compared; a dash means we could not, and
+      <a href="#coverage" class="underline hover:text-white">why is stated per employer</a>.
+      Click any row for the evidence behind it.`;
+    buildBrowser();
 
     await Promise.all([loadCompanies(), loadCollectors(), loadHeal(), loadSnapshots()]);
   } catch (err) {

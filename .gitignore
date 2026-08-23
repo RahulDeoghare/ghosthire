@@ -34,3 +34,6 @@ data/snapshots/*.part
 
 # snapshot reservations — an in-flight or abandoned run, never evidence
 *.json.part
+
+# sweep logs — regenerated every run, not evidence
+data/logs/

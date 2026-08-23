@@ -247,6 +247,20 @@ def score_all(conn: sqlite3.Connection) -> tuple[int, int]:
         "SELECT * FROM job_listings WHERE source != 'career_page'"
     ).fetchall()
 
+    # A repost is the same role at the same employer advertised again under a
+    # fresh URL. It is weak evidence on its own — a company may genuinely open
+    # the role twice — so it is a 15-point signal rather than a verdict, and it
+    # only counts where the URLs actually differ.
+    reposts = {
+        (r["company_name_normalized"], r["job_title_normalized"])
+        for r in conn.execute(
+            """SELECT company_name_normalized, job_title_normalized
+                 FROM job_listings
+                WHERE source != 'career_page' AND job_title_normalized != ''
+                GROUP BY company_name_normalized, job_title_normalized
+               HAVING COUNT(DISTINCT job_url) > 1""")
+    }
+
     for listing in listings:
         career = career_rows_for(conn, listing["company_name_normalized"])
         checked = len(career) > 0
@@ -263,6 +277,8 @@ def score_all(conn: sqlite3.Connection) -> tuple[int, int]:
             date_posted=listing["date_posted"],
             date_posted_confidence=listing["date_posted_confidence"] or "absent",
             career_page_role_count=len(career) if checked else None,
+            repost_detected=(listing["company_name_normalized"],
+                             listing["job_title_normalized"]) in reposts,
             reason=result.reason,
         )
 
