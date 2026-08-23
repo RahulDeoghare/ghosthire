@@ -172,11 +172,15 @@ def collectors() -> list[dict[str, Any]]:
                 "GROUP BY collector_id"
             )
         }
+        # Keyed by (source, collector_id), not by collector_id alone: two
+        # collector keys can share one c_* — the board firehose and the
+        # per-company board search do — and counting by ID alone showed each
+        # of them the other's rows as well.
         stored = {
-            r["collector_id"]: r["n"]
+            (r["source"], r["collector_id"]): r["n"]
             for r in conn.execute(
-                "SELECT collector_id, COUNT(*) n FROM job_listings "
-                "WHERE collector_id IS NOT NULL GROUP BY collector_id"
+                "SELECT source, collector_id, COUNT(*) n FROM job_listings "
+                "WHERE collector_id IS NOT NULL GROUP BY source, collector_id"
             )
         }
 
@@ -191,7 +195,7 @@ def collectors() -> list[dict[str, Any]]:
             "created": bool(cid),
             "enabled": collector.get("enabled", True),
             "targets": len(collector.get("targets") or []),
-            "listings_stored": stored.get(cid, 0),
+            "listings_stored": stored.get((collector.get("source"), cid), 0) if cid else 0,
             "last_run_at": last.get("completed_at"),
             "last_status": last.get("status"),
             "last_rows": last.get("rows_returned"),

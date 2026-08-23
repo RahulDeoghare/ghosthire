@@ -99,6 +99,24 @@ def test_collectors_panel_exposes_the_ids(client):
     assert any(not r["created"] for r in rows)
 
 
+def test_collectors_sharing_one_id_do_not_share_each_others_counts(client):
+    """The board firehose and the per-company board search run on the same
+    c_* ID. Counting stored listings by ID alone showed each of them the
+    other's rows, so both reported the combined total."""
+    rows = {r["key"]: r for r in client.get("/api/collectors").json()}
+    firehose, per_company = rows["board_internshala_jobs"], rows["board_company"]
+
+    assert firehose["collector_id"] == per_company["collector_id"]
+    assert firehose["listings_stored"] != per_company["listings_stored"]
+    assert per_company["listings_stored"] > 0
+
+
+def test_an_uncreated_collector_stores_nothing(client):
+    for row in client.get("/api/collectors").json():
+        if not row["created"]:
+            assert row["listings_stored"] == 0
+
+
 def test_meta_reports_both_populations(client):
     meta = client.get("/api/meta").json()
     assert meta["assessed"] >= 1
