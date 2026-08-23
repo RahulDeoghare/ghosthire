@@ -135,15 +135,32 @@ def ingest_rows(
         ).fetchone()
 
         if existing:
+            # The newest observation is the listing's current state, so the
+            # stored fields are refreshed rather than only counted.
+            #
+            # Not bookkeeping: 33 of 50 rows in one rebuild kept the mangled
+            # company names from a snapshot taken before the collector was
+            # healed, because a later clean scrape of the same job_url bumped
+            # the counter and left the old text in place. A stale name here is
+            # the name the product would publish an accusation against.
             conn.execute(
                 """
                 UPDATE job_listings
                    SET last_seen = ?, observation_count = observation_count + 1,
-                       is_active = 1, raw_json = ?, collector_id = ?
+                       is_active = 1, raw_json = ?, collector_id = ?,
+                       company_name = ?, company_name_normalized = ?,
+                       job_title = ?, job_title_normalized = ?,
+                       location = ?, location_normalized = ?,
+                       date_posted = ?, date_posted_confidence = ?,
+                       salary_range = ?
                  WHERE id = ?
                 """,
-                (seen_at, json.dumps(row, ensure_ascii=False),
-                 collector_id, existing["id"]),
+                (seen_at, json.dumps(row, ensure_ascii=False), collector_id,
+                 name, normalize_company(name),
+                 title, normalize_title(title),
+                 location, normalize_location(location),
+                 posted_iso, posted_confidence, pick(row, "salary"),
+                 existing["id"]),
             )
             result.updated += 1
             continue

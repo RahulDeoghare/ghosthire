@@ -151,6 +151,32 @@ def test_reingesting_the_same_snapshot_observes_rather_than_duplicates(conn):
     assert counts == {2}
 
 
+def test_a_re_observation_refreshes_the_stored_row(conn):
+    """The newest observation is the listing's current state.
+
+    A rebuild kept the mangled company names from a snapshot taken before the
+    collector was healed: a later clean scrape of the same job_url bumped the
+    counter and left the old text in place. 33 of 50 rows were affected, and a
+    stale name here is the name an accusation would be published against.
+    """
+    url = "https://internshala.com/job/detail/same-listing-1"
+    contaminated = [{"company_name": "Acme Ltd Beta Corp Gamma Inc",
+                     "job_title": "Backend Engineer Frontend Engineer",
+                     "location": "Delhi, Delhi", "job_url": url}]
+    clean = [{"company_name": "Acme Ltd", "job_title": "Backend Engineer",
+              "location": "Delhi", "date_posted": "2 weeks ago", "job_url": url}]
+
+    ingest.ingest_rows(conn, contaminated, source="internshala")
+    ingest.ingest_rows(conn, clean, source="internshala")
+
+    row = conn.execute("SELECT * FROM job_listings WHERE job_url = ?", (url,)).fetchone()
+    assert row["company_name"] == "Acme Ltd"
+    assert row["job_title"] == "Backend Engineer"
+    assert row["company_name_normalized"] == "acme"
+    assert row["observation_count"] == 2, "still counted as seen twice"
+    assert row["date_posted"] is not None, "the later date must land too"
+
+
 def test_a_row_without_a_url_is_not_stored(conn):
     """UNIQUE(source, job_url) is the listing's identity, and the URL is also
     the evidence link a reader clicks to check us."""
