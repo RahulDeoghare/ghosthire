@@ -37,7 +37,10 @@ CREATE INDEX IF NOT EXISTS idx_listings_source
 CREATE TABLE IF NOT EXISTS ghost_scores (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,
     listing_id                INTEGER NOT NULL REFERENCES job_listings(id),
-    ghost_score               INTEGER NOT NULL,
+    -- NULL when career_page_checked = 0, and the CHECK below enforces it.
+    -- A sentinel like -1 would eventually render in a UI as a real score; a
+    -- NULL cannot be mistaken for a measurement.
+    ghost_score               INTEGER,
     signals                   TEXT NOT NULL,  -- JSON array
     matched_career_listing_id INTEGER REFERENCES job_listings(id),
     match_confidence          REAL,           -- 0.0-1.0, shown in the UI
@@ -45,7 +48,12 @@ CREATE TABLE IF NOT EXISTS ghost_scores (
     -- scored as a ghost: absence of evidence is not evidence of absence, and
     -- skipping this is the fastest way to publish a wrong accusation.
     career_page_checked       INTEGER NOT NULL,
-    scored_at                 TEXT DEFAULT (datetime('now'))
+    scored_at                 TEXT DEFAULT (datetime('now')),
+    -- The project's central safety rule, enforced by the database rather than
+    -- by everyone remembering it: an unassessed listing cannot carry a score,
+    -- and an assessed one cannot be missing one.
+    CHECK ((career_page_checked = 0 AND ghost_score IS NULL)
+        OR (career_page_checked = 1 AND ghost_score IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_scores_listing ON ghost_scores(listing_id);
