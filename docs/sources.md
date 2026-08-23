@@ -268,6 +268,53 @@ Record the answer in the table above, replace anything that fails from the reser
 list, and update `scrapers/collectors.yaml` to match. The `ats` values there are
 recorded guesses — written down *so they can be checked*, not because they are known.
 
+## Pairing the board with the career pages — VERIFIED 2026-08-23
+
+The front page of the board and the eight career targets are **disjoint populations**:
+
+```
+board employers (normalized)          46
+career targets configured              8
+overlap                                0
+```
+
+Internshala's fresher-jobs page returns Hey Buddy, Harold Electricals, Bajaj Finance,
+Atlas Copco, Conbox Logistics. The career targets are consumer-tech companies. Not one
+appears on both sides, and re-picking career targets from the board list does not fix it
+either — the extraction path that works is Greenhouse, and mid-market Indian employers
+mostly do not run Greenhouse.
+
+Left alone this is fatal to the product rather than to the pipeline: ingest, normalize
+and match would all run correctly, find nothing, and every listing would score
+`career_page_checked = 0`. The dashboard would render 50 rows of "not assessed" and no
+ghost score would be computable for any of them.
+
+**The fix is to scrape the board per company rather than as a firehose.** Internshala
+exposes a company filter at `/jobs/keywords-<name>`, so the two sides are made to
+overlap by construction instead of by luck. It needs no new collector — the same
+`c_mt1senswibym6o5va` reads the filtered URL — which matters because the account's trial
+collector slots are exhausted.
+
+First run, `board_company --company razorpay`, 3 rows in 12.9s
+(`20260823T070349Z_board-company-razorpay.json`), against the 25 roles on Razorpay's
+Greenhouse board (`20260821T183126Z_career-razorpay.json`):
+
+| Board listing | Best careers-page candidate | `token_sort_ratio` | Verdict |
+|---|---|---|---|
+| Associate, Startup Accounts | Associate, Startup Accounts | **100.0** | on both — not a ghost |
+| Associate Technical Program Manager | Technical Account Manager | 70.0 | **candidate ghost** |
+| Associate Manager, Key Accounts Management | Associate Manager, Startup Accounts | 72.7 | **candidate ghost** |
+
+Two things worth noting. The first row is a true negative and the product must say so —
+a listing that *is* on the careers page is the common case and the honest baseline. And
+the third row is exactly the near-miss the §3A.4 threshold exists for: 72.7 is close
+enough to look like a match to a human skimming, and the ≥85 gate correctly refuses it.
+
+**What this costs in scope.** The project no longer assesses "a job board"; it assesses
+a named list of companies, on both sides. That is a smaller claim and a more defensible
+one — every score traces to two URLs a reader can open. The front-page sweep is kept for
+the coverage number, not for scoring.
+
 ## Only public data
 
 Every target here is a public page reachable without an account. Nothing behind a
