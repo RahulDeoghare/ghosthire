@@ -221,10 +221,16 @@ def test_a_wide_window_is_filled_rather_than_margined():
     assert ".panes{" in html.replace(" ", ""), "no two-pane layout"
     assert "grid-template-columns" in html
     assert "WIDE" in html, "the breakpoint must be readable from script"
-    # The same breakpoint value in both places, not two that drift.
+
+    # The stylesheet and the script must name the SAME breakpoint. Table
+    # min-widths are not breakpoints, so only media queries and matchMedia
+    # calls are compared.
     import re
-    widths = set(re.findall(r"min-width:\s*(\d+)px", html))
-    assert len(widths) == 1, f"breakpoint declared at differing widths: {widths}"
+    css = set(re.findall(r"@media\s*\(min-width:\s*(\d+)px\)", html))
+    js = set(re.findall(r"matchMedia\(\s*[\"'“]\(min-width:\s*(\d+)px\)", html))
+    assert css, "no media-query breakpoint found"
+    assert js, "script never consults the breakpoint"
+    assert css == js, f"stylesheet says {sorted(css)}, script says {sorted(js)}"
 
 
 def test_a_narrow_window_still_gets_the_dialog():
