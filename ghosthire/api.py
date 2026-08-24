@@ -163,6 +163,20 @@ def listing_detail(listing_id: int) -> dict[str, Any]:
             )
         ]
         payload["signal_weights"] = {s: SIGNALS[s] for s in payload["signals"]}
+
+        # The careers page itself, not just the roles on it. Without this a
+        # non-match gave the reader nowhere to go: the claim is "this role is
+        # not listed there", and checking it means opening there.
+        from .normalize import normalize_company
+        payload["career_page_url"] = None
+        for collector in load_collectors().get("collectors") or []:
+            if collector.get("kind") != "career":
+                continue
+            for target in collector.get("targets") or []:
+                if (target.get("company")
+                        and normalize_company(target["company"])
+                        == row["company_name_normalized"]):
+                    payload["career_page_url"] = target.get("url")
         return payload
 
 

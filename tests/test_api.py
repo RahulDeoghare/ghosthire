@@ -83,6 +83,20 @@ def test_a_matched_listing_links_to_the_role_it_matched(client):
     assert detail["matched_career_listing"]["career_url"]
 
 
+def test_a_non_match_still_gives_the_reader_somewhere_to_check(client):
+    """The claim is "this role is not on their careers page", and checking it
+    means opening that page. Without the URL the evidence view offered a
+    verdict and no way to test it."""
+    unmatched = [r for r in client.get("/api/leaderboard").json()
+                 if r["ghost_score"] and r["ghost_score"] > 0]
+    assert unmatched, "the archive should hold at least one non-match"
+
+    detail = client.get(f"/api/listings/{unmatched[0]['id']}").json()
+    assert detail["board_url"], "the board side must be linkable"
+    assert detail["career_page_url"], "the careers-page side must be linkable too"
+    assert detail["career_page_url"].startswith("http")
+
+
 def test_missing_listing_is_404(client):
     assert client.get("/api/listings/999999").status_code == 404
 

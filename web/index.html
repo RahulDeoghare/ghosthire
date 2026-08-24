@@ -14,7 +14,9 @@
     --text:#e8eaf0; --muted:#8b93a7; --dim:#5c6478;
     --accent:#5b9cff; --real:#34d399; --quest:#fbbf24; --ghost:#f87171;
   }
-  body{background:var(--bg);color:var(--text);font-feature-settings:"tnum","cv02";}
+  html{overflow-x:hidden;}
+  body{background:var(--bg);color:var(--text);font-feature-settings:"tnum","cv02";
+       overflow-x:hidden;max-width:100vw;}
   .hidden{display:none !important;}
   .surface{background:var(--surface);border:1px solid var(--line);}
   .raised{background:var(--raised);}
@@ -244,8 +246,8 @@ function dateCell(row) {
 
 function table(rows, opts={}) {
   if (!rows.length) return `<p class="dim">Nothing here.</p>`;
-  return `<div class="surface rounded-lg overflow-hidden">
-    <table class="w-full text-sm">
+  return `<div class="surface rounded-lg overflow-x-auto">
+    <table class="w-full text-sm" style="min-width:640px">
       <thead><tr class="raised text-xs uppercase dim">
         <th class="text-left px-4 py-3 w-20">Score</th>
         <th class="text-left px-4 py-3">Company</th>
@@ -317,7 +319,10 @@ async function openDetail(id) {
           : d.assessed
             ? `<p class="font-medium" style="color:var(--ghost)">No matching role found.</p>
                <p class="muted text-sm mt-2">We read this company's careers page and none of its
-                  ${d.career_page_roles.length} open roles matched this title.</p>`
+                  ${d.career_page_roles.length} open roles matched this title.</p>
+               ${d.career_page_url ? `<p class="mt-3">${linkOrText(d.career_page_url,
+                 "open the careers page and check →", "text-sm break-all")
+                 .replace('class="text-sm', 'style="color:var(--accent)" class="hover:underline text-sm')}</p>` : ""}`
             : `<p class="dim">We have not read this company's careers page.</p>`}
       </div>
     </div>
@@ -333,10 +338,19 @@ async function openDetail(id) {
       · source <span class="mono">${esc(d.source)}</span></p>`;
   $("#detail").classList.remove("hidden");
   const btn = $("#detail-body button"); if (btn) btn.focus();
+
+  // A finding is meant to be sent to someone. Put it in the URL so the
+  // evidence view itself is linkable, not just the filtered list.
+  const p = new URLSearchParams(location.search);
+  p.set("listing", id);
+  history.replaceState(null, "", `?${p}`);
 }
 
 function closeDetail(){
   $("#detail").classList.add("hidden");
+  const p = new URLSearchParams(location.search);
+  p.delete("listing");
+  history.replaceState(null, "", p.toString() ? `?${p}` : location.pathname);
   if (lastFocus?.focus) lastFocus.focus();
   lastFocus = null;
 }
@@ -648,6 +662,7 @@ async function start() {
       <a href="#coverage" class="underline hover:text-white">why is stated per employer</a>.
       Click any row for the evidence behind it.`;
     buildBrowser();
+    if (INITIAL.get("listing")) openDetail(INITIAL.get("listing"));
 
     await Promise.all([loadCoverage(), loadCollectors(),
                        loadHeal(), loadSnapshots()]);
