@@ -37,3 +37,4 @@ data/snapshots/*.part
 
 # sweep logs — regenerated every run, not evidence
 data/logs/
+.vercel
