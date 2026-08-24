@@ -241,6 +241,28 @@ def test_a_narrow_window_still_gets_the_dialog():
     assert "paneEmpty" in html, "the pane needs an empty state, not a blank column"
 
 
+def test_the_type_system_separates_prose_from_data():
+    """Serif for what a person reads as language, sans for the interface, mono
+    for values. A collector ID or a salary is a value, not prose, and setting
+    it in mono says so without needing a label."""
+    style = _html().split("</style>")[0]
+    assert "Source Serif" in style, "no serif for display"
+    assert "Geist Mono" in style, "no mono for data"
+    body = [ln for ln in style.splitlines() if ln.strip().startswith("body{")]
+    assert any("Geist" in ln and "Mono" not in ln for ln in body), \
+        "body text should not be set in the display or data face"
+
+
+def test_fonts_have_a_fallback_stack():
+    """A webfont that fails to load must fall back to something with the same
+    intent, not to whatever the browser picks."""
+    style = _html().split("</style>")[0]
+    serif = [ln for ln in style.splitlines() if "Source Serif" in ln][0]
+    assert "serif" in serif.split("Source Serif")[1], "serif has no generic fallback"
+    mono = [ln for ln in style.splitlines() if "Geist Mono" in ln][0]
+    assert "monospace" in mono, "mono has no generic fallback"
+
+
 def test_the_modal_is_announced_and_takes_focus():
     html = _html()
     assert 'role="dialog"' in html and 'aria-modal="true"' in html
