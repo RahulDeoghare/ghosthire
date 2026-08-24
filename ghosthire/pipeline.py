@@ -169,6 +169,15 @@ def rebuild(conn: sqlite3.Connection, quiet: bool = False) -> RebuildReport:
     history = collector_history()
     report = RebuildReport()
 
+    # Every employer we track by name, so the front-page sweep can fold its
+    # variant spellings onto the same company the per-company searches use.
+    known = sorted({
+        target["company"]
+        for collector in doc.get("collectors") or []
+        for target in collector.get("targets") or []
+        if target.get("company")
+    })
+
     conn.execute("DELETE FROM ghost_scores")
     conn.execute("DELETE FROM job_listings")
     conn.execute("DELETE FROM scrape_runs")
@@ -211,6 +220,7 @@ def rebuild(conn: sqlite3.Connection, quiet: bool = False) -> RebuildReport:
             conn, rows, source=plan.source, collector_id=collector_id,
             company=plan.company, slug=plan.slug,
             company_from_target=plan.company_from_target,
+            known_companies=known,
         )
         report.ingested += result.accepted
         report.rejected += result.rejected_company

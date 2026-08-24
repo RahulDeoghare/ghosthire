@@ -63,6 +63,25 @@ class IngestResult:
         return " · ".join(parts)
 
 
+def _canonical(raw: str, known: list[str] | None) -> str:
+    """Fold an employer's many spellings onto one name.
+
+    The board's front page writes the same company several ways — "NoBroker",
+    "NoBroker Technologies Solutions Private Limited", "Lenskart (Gurgaon,
+    India)" — and each normalized differently, so one employer appeared as
+    three. Where a row matches a company we already track, it takes that
+    company's name; otherwise it keeps its own, since inventing a canonical
+    form for an employer we know nothing about would be a guess.
+
+    Uses the same guard as attribution, so it cannot fold two different
+    companies together — CredAvenue still does not become CRED.
+    """
+    for candidate in known or ():
+        if company_matches(raw, candidate):
+            return candidate
+    return raw
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -76,6 +95,7 @@ def ingest_rows(
     company: str | None = None,
     slug: str | None = None,
     company_from_target: bool = False,
+    known_companies: list[str] | None = None,
     seen_at: str | None = None,
 ) -> IngestResult:
     """Upsert collector rows.
@@ -116,7 +136,11 @@ def ingest_rows(
             # full legal name — which normalize differently and would be stored
             # as three companies, none of them matching the careers page we
             # hold for NoBroker. The raw string stays in raw_json.
-            name = company if company else raw_company
+            # With no target — the front-page sweep — the row names its own
+            # employer, and the board spells one employer several ways. Fold
+            # it onto a company we already track so it groups with the
+            # per-company searches instead of standing alone.
+            name = company if company else _canonical(raw_company, known_companies)
 
         title = pick(row, "title")
         if not name or not title:

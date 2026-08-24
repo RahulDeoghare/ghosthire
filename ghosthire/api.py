@@ -368,6 +368,67 @@ def companies() -> list[dict[str, Any]]:
     return sorted(out, key=lambda r: (-r["listings"], r["company"] or ""))
 
 
+# Categorical hues, fixed order, validated for this surface: worst adjacent
+# CVD ΔE 8.4 (protan), normal-vision 19.3, all five ≥3:1 on #0e1015. Coverage
+# reasons are identities, so they get a categorical system of their own — the
+# score bands are a status palette and must not share hues with it.
+COVERAGE_SLOTS = [
+    ("verified",     "Verified against the careers page", "#3987e5"),
+    ("unreadable",   "Careers page uses an ATS we cannot read", "#d95926"),
+    ("js_portal",    "Bespoke client-side portal", "#199e70"),
+    ("out_of_scope", "Out of scope by rule", "#c98500"),
+    ("unidentified", "No careers page identified", "#d55181"),
+]
+
+
+@app.get("/api/coverage")
+def coverage() -> dict[str, Any]:
+    """Why 70 listings yield 4 verdicts, as a part-to-whole.
+
+    The unverifiable share is not one thing: an unreadable applicant-tracking
+    system, a portal that builds itself in the browser, a page that is
+    off-limits under the public-data-only rule, and employers we never picked a
+    careers page for are four different situations, and lumping them together
+    would hide that most of the gap is the last one.
+    """
+    doc = load_collectors()
+    access: dict[str, str] = {}
+    from .normalize import normalize_company
+    for collector in doc.get("collectors") or []:
+        if collector.get("kind") != "career":
+            continue
+        for target in collector.get("targets") or []:
+            if target.get("company"):
+                access[normalize_company(target["company"])] = (
+                    target.get("career_access") or "unidentified")
+
+    counts = {key: 0 for key, _, _ in COVERAGE_SLOTS}
+    with db() as conn:
+        rows = conn.execute(
+            """SELECT l.company_name_normalized c,
+                      COALESCE(s.career_page_checked, 0) checked, COUNT(*) n
+                 FROM job_listings l
+                 LEFT JOIN ghost_scores s ON s.listing_id = l.id
+                WHERE l.source != 'career_page'
+                GROUP BY 1, 2""").fetchall()
+    for row in rows:
+        if row["checked"]:
+            counts["verified"] += row["n"]
+        else:
+            state = access.get(row["c"], "unidentified")
+            counts[state if state in counts else "unidentified"] += row["n"]
+
+    total = sum(counts.values()) or 1
+    return {
+        "total": sum(counts.values()),
+        "segments": [
+            {"key": key, "label": label, "color": color,
+             "count": counts[key], "share": round(counts[key] / total * 100, 1)}
+            for key, label, color in COVERAGE_SLOTS if counts[key]
+        ],
+    }
+
+
 @app.get("/api/heal")
 def heal() -> dict[str, Any]:
     """The repair history, keyed by the collector that survived it.

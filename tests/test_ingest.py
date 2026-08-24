@@ -177,6 +177,35 @@ def test_a_re_observation_refreshes_the_stored_row(conn):
     assert row["date_posted"] is not None, "the later date must land too"
 
 
+def test_front_page_rows_fold_onto_a_known_employer(conn):
+    """The board writes one employer several ways. Without folding, NoBroker
+    appeared as two companies and Lenskart as two more, and neither variant
+    matched the careers page held for them."""
+    rows = [
+        {"company_name": "NoBroker Technologies Solutions Private Limited",
+         "job_title": "Sales Executive", "job_url": "https://x.test/a"},
+        {"company_name": "Lenskart (Gurgaon, India)",
+         "job_title": "Sales Associate", "job_url": "https://x.test/b"},
+    ]
+    ingest.ingest_rows(conn, rows, source="internshala",
+                       known_companies=["NoBroker", "Lenskart"])
+
+    names = {r[0] for r in conn.execute("SELECT company_name FROM job_listings")}
+    assert names == {"NoBroker", "Lenskart"}
+
+
+def test_folding_cannot_merge_two_different_companies(conn):
+    """It runs through the same guard as attribution, so the CredAvenue case
+    still cannot be folded into CRED."""
+    ingest.ingest_rows(
+        conn, [{"company_name": "CredAvenue", "job_title": "Analyst",
+                "job_url": "https://x.test/c"}],
+        source="internshala", known_companies=["CRED"])
+
+    assert conn.execute(
+        "SELECT company_name FROM job_listings").fetchone()[0] == "CredAvenue"
+
+
 def test_a_row_without_a_url_is_not_stored(conn):
     """UNIQUE(source, job_url) is the listing's identity, and the URL is also
     the evidence link a reader clicks to check us."""

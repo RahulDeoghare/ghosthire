@@ -100,7 +100,8 @@
       portal that builds itself in the browser, or a page that is off-limits under
       the public-data-only rule. A blank cell would hide which.
     </p>
-    <div id="companies" class="mt-6"></div>
+    <figure id="coverage-fig" class="mt-6"></figure>
+    <div id="companies" class="mt-8"></div>
   </section>
 
   <!-- ── the honesty section ──────────────────────────────────────────── -->
@@ -227,8 +228,9 @@ function scoreBadge(row, big=false) {
 
 function signalChips(signals) {
   if (!signals?.length) return `<span class="dim text-xs">no signals triggered</span>`;
-  return signals.map(s => `<span class="inline-block raised border rule px-2 py-0.5 rounded text-xs mr-1 mb-1 muted">
-    ${esc(s)} <span class="dim">+${META?.signals?.[s] ?? "?"}</span></span>`).join("");
+  return signals.map(s => `<span class="inline-flex items-center gap-1 raised border rule
+    px-2 py-0.5 rounded text-xs mr-1 muted whitespace-nowrap align-middle">
+    ${esc(s)}<span class="dim">+${META?.signals?.[s] ?? "?"}</span></span>`).join("");
 }
 
 function dateCell(row) {
@@ -257,9 +259,13 @@ function table(rows, opts={}) {
           <td class="px-4 py-3 font-medium">${esc(r.company)}</td>
           <td class="px-4 py-3 muted">${esc(r.job_title)}</td>
           <td class="px-4 py-3">${dateCell(r)}</td>
-          <td class="px-4 py-3">${opts.unassessed
-            ? `<span class="dim text-xs">no careers-page data for this company</span>`
-            : signalChips(r.signals)}</td>
+          <td class="px-4 py-3">${
+            // An unverified listing has no signals because nothing was
+            // checked — not because none fired. "No signals triggered" on
+            // these rows read as a clean bill of health for listings nobody
+            // looked at. The reason differs per employer, so show that
+            // rather than one sentence repeated down the column.
+            !r.assessed ? whyNot(r.company) : signalChips(r.signals)}</td>
         </tr>`).join("")}</tbody>
     </table></div>`;
 }
@@ -350,6 +356,11 @@ function stat(n, label, hint) {
 let ALL = [];
 let FILTER = "all";
 
+// Read once, at load. renderBoard() writes the URL back through syncUrl(), and
+// the first render can happen before the browser is built — which stripped the
+// incoming query string before anything had read it.
+const INITIAL = new URLSearchParams(location.search);
+
 const FILTERS = [
   ["all",       "All listings",     r => true],
   ["ghost",     "Ghost candidates", r => r.assessed && r.ghost_score >= 30],
@@ -361,6 +372,17 @@ function matches(row, q) {
   if (!q) return true;
   const hay = `${row.company} ${row.job_title} ${row.location || ""}`.toLowerCase();
   return q.toLowerCase().split(/\s+/).every(t => hay.includes(t));
+}
+
+function syncUrl() {
+  // Shareable state: a filtered view can be sent to someone as a link, which
+  // matters for a tool whose whole proposition is "go and check this".
+  const p = new URLSearchParams();
+  if ($("#q").value.trim()) p.set("q", $("#q").value.trim());
+  if (FILTER !== "all") p.set("show", FILTER);
+  if ($("#company-filter").value) p.set("employer", $("#company-filter").value);
+  const qs = p.toString();
+  history.replaceState(null, "", qs ? `?${qs}${location.hash}` : location.pathname + location.hash);
 }
 
 function renderBoard() {
@@ -385,6 +407,7 @@ function renderBoard() {
     ? table(rows)
     : `<div class="surface rounded-lg p-6 dim text-sm">No listing matches that search.</div>`;
   wire($("#board"));
+  syncUrl();
 
   document.querySelectorAll("[data-filter]").forEach(b =>
     b.className = `px-3 py-1.5 rounded-full text-xs border rule ${
@@ -404,6 +427,13 @@ function buildBrowser() {
 
   $("#q").addEventListener("input", renderBoard);
   $("#company-filter").addEventListener("change", renderBoard);
+
+  // Restore state from the URL so a shared link opens the same view.
+  if (INITIAL.get("q")) $("#q").value = INITIAL.get("q");
+  if (FILTERS.some(f => f[0] === INITIAL.get("show"))) FILTER = INITIAL.get("show");
+  if (companies.includes(INITIAL.get("employer")))
+    $("#company-filter").value = INITIAL.get("employer");
+
   renderBoard();
 }
 
@@ -416,6 +446,22 @@ async function showUnassessed() {
   wire(el);
 }
 
+// company → why it cannot be verified, filled by loadCompanies()
+let WHY = {};
+
+const WHY_SHORT = {
+  "out_of_scope": ["out of scope", "its job portal is LinkedIn — login-walled"],
+  "js_portal":    ["portal not readable", "roles are built in the browser"],
+  "unreadable":   ["ATS not readable", "this collector returns nothing on that system"],
+};
+
+function whyNot(company) {
+  const access = WHY[company];
+  const [short, long] = WHY_SHORT[access] || ["careers page not selected",
+    "this employer was not one we picked a careers page for"];
+  return `<span class="dim text-xs" title="${esc(long)}">${esc(short)}</span>`;
+}
+
 const ACCESS_STYLE = {
   "readable":     "band-real",
   "unreadable":   "band-quest",
@@ -423,8 +469,51 @@ const ACCESS_STYLE = {
   "out_of_scope": "band-none",
 };
 
+async function loadCoverage() {
+  const d = await api("/api/coverage");
+  if (!d.segments.length) return;
+  const total = d.total;
+
+  // A single stacked bar: one measure split by reason. 2px surface gaps keep
+  // the segments legible as separate marks, and every segment is directly
+  // labelled so identity never rests on hue alone.
+  const bar = d.segments.map((s, i) => `
+    <div class="relative group" style="width:${(s.count / total) * 100}%;
+         ${i ? "margin-left:2px;" : ""}">
+      <div style="background:${s.color};height:34px;
+           border-radius:${i === 0 ? "6px 0 0 6px" : ""}${
+             i === d.segments.length - 1 ? "0 6px 6px 0" : ""}${
+             i !== 0 && i !== d.segments.length - 1 ? "0" : ""};"></div>
+      <div class="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-9 z-10
+           opacity-0 group-hover:opacity-100 transition surface rounded px-2 py-1
+           text-xs whitespace-nowrap">
+        ${esc(s.label)} — <strong>${s.count}</strong> (${s.share}%)</div>
+    </div>`).join("");
+
+  $("#coverage-fig").innerHTML = `
+    <figcaption class="text-sm muted mb-3">
+      Of <strong class="text-slate-200">${total}</strong> listings collected,
+      <strong class="text-slate-200">${d.segments[0].count}</strong> could be checked
+      against the employer's own careers page. The rest break down by reason:
+    </figcaption>
+    <div class="flex w-full" role="img"
+      aria-label="${d.segments.map(s => `${s.label}: ${s.count}`).join(", ")}">${bar}</div>
+    <div class="flex flex-wrap gap-x-5 gap-y-2 mt-4 text-xs">
+      ${d.segments.map(s => `<span class="flex items-center gap-2">
+        <span style="background:${s.color};width:10px;height:10px;border-radius:2px"></span>
+        <span class="muted">${esc(s.label)}</span>
+        <span class="dim mono">${s.count}</span></span>`).join("")}
+    </div>
+    <p class="dim text-xs mt-3 max-w-3xl">
+      The largest share is employers we never selected a careers page for — the board's
+      long tail. It is not a claim that those companies are unreachable, only that we
+      did not try. The table below covers the ones we did.</p>`;
+}
+
 async function loadCompanies() {
   const rows = await api("/api/companies");
+  WHY = Object.fromEntries(rows.map(c => [c.company, c.access]));
+  if (ALL.length) renderBoard();   // relabel rows drawn before this resolved
   $("#companies").innerHTML = `<div class="surface rounded-lg overflow-x-auto">
     <table class="w-full text-sm">
       <thead><tr class="raised text-xs uppercase dim">
@@ -553,13 +642,15 @@ async function start() {
           ${esc(s)} <span class="dim">+${w}</span></span>`).join("");
 
     ALL = await api("/api/listings?limit=500");
+    await loadCompanies();
     $("#findings-note").innerHTML = `Every listing we collected, searchable. A score means we
       read that employer's careers page and compared; a dash means we could not, and
       <a href="#coverage" class="underline hover:text-white">why is stated per employer</a>.
       Click any row for the evidence behind it.`;
     buildBrowser();
 
-    await Promise.all([loadCompanies(), loadCollectors(), loadHeal(), loadSnapshots()]);
+    await Promise.all([loadCoverage(), loadCollectors(),
+                       loadHeal(), loadSnapshots()]);
   } catch (err) {
     document.querySelector("main").innerHTML = `<div class="surface rounded-lg p-6 my-10">
       <p style="color:var(--ghost)">Could not load: ${esc(err.message)}</p>
