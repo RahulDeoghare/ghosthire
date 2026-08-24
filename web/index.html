@@ -368,7 +368,15 @@ function stat(n, label, hint) {
 // Every listing, fetched once. 70 rows filter faster in the page than over
 // the wire, and it keeps the search responsive on each keystroke.
 let ALL = [];
-let FILTER = "all";
+// Default to the listings that carry a verdict. Opening on all 70 led with the
+// 66 we could not check, which reads as a dump rather than a finding — the
+// unverifiable ones are the honest context, not the headline.
+let FILTER = "checked";
+let EXPANDED = false;
+
+// Long lists are capped until asked to expand; a page that opens with dozens
+// of rows hides its own point.
+const PAGE = 25;
 
 // Read once, at load. renderBoard() writes the URL back through syncUrl(), and
 // the first render can happen before the browser is built — which stripped the
@@ -376,10 +384,11 @@ let FILTER = "all";
 const INITIAL = new URLSearchParams(location.search);
 
 const FILTERS = [
-  ["all",       "All listings",     r => true],
+  ["checked",   "Checked",          r => r.assessed],
   ["ghost",     "Ghost candidates", r => r.assessed && r.ghost_score >= 30],
   ["confirmed", "Confirmed real",   r => r.assessed && r.ghost_score < 30],
   ["unchecked", "Unverifiable",     r => !r.assessed],
+  ["all",       "All listings",     r => true],
 ];
 
 function matches(row, q) {
@@ -393,7 +402,7 @@ function syncUrl() {
   // matters for a tool whose whole proposition is "go and check this".
   const p = new URLSearchParams();
   if ($("#q").value.trim()) p.set("q", $("#q").value.trim());
-  if (FILTER !== "all") p.set("show", FILTER);
+  if (FILTER !== "checked") p.set("show", FILTER);
   if ($("#company-filter").value) p.set("employer", $("#company-filter").value);
   const qs = p.toString();
   history.replaceState(null, "", qs ? `?${qs}${location.hash}` : location.pathname + location.hash);
@@ -414,13 +423,20 @@ function renderBoard() {
     || a.company.localeCompare(b.company));
 
   const verified = rows.filter(r => r.assessed).length;
+  const shown = EXPANDED ? rows : rows.slice(0, PAGE);
+  const hidden = rows.length - shown.length;
+
   $("#result-count").textContent =
     `${rows.length} listing${rows.length === 1 ? "" : "s"}` +
     (rows.length ? ` · ${verified} checked against the employer's careers page` : "");
   $("#board").innerHTML = rows.length
-    ? table(rows)
+    ? table(shown) + (hidden > 0 ? `
+        <button id="more" class="w-full surface rounded-lg mt-2 py-3 text-sm muted
+          hover:text-slate-100 border rule">Show ${hidden} more →</button>` : "")
     : `<div class="surface rounded-lg p-6 dim text-sm">No listing matches that search.</div>`;
   wire($("#board"));
+  const more = $("#more");
+  if (more) more.addEventListener("click", () => { EXPANDED = true; renderBoard(); });
   syncUrl();
 
   document.querySelectorAll("[data-filter]").forEach(b =>
@@ -433,14 +449,15 @@ function buildBrowser() {
     `<button data-filter="${key}" class="px-3 py-1.5 rounded-full text-xs border rule muted">
       ${label} <span class="dim">${ALL.filter(test).length}</span></button>`).join("");
   document.querySelectorAll("[data-filter]").forEach(b =>
-    b.addEventListener("click", () => { FILTER = b.dataset.filter; renderBoard(); }));
+    b.addEventListener("click", () => {
+      FILTER = b.dataset.filter; EXPANDED = false; renderBoard(); }));
 
   const companies = [...new Set(ALL.map(r => r.company))].sort();
   $("#company-filter").innerHTML = `<option value="">All employers (${companies.length})</option>` +
     companies.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
 
-  $("#q").addEventListener("input", renderBoard);
-  $("#company-filter").addEventListener("change", renderBoard);
+  $("#q").addEventListener("input", () => { EXPANDED = false; renderBoard(); });
+  $("#company-filter").addEventListener("change", () => { EXPANDED = false; renderBoard(); });
 
   // Restore state from the URL so a shared link opens the same view.
   if (INITIAL.get("q")) $("#q").value = INITIAL.get("q");
@@ -657,9 +674,10 @@ async function start() {
 
     ALL = await api("/api/listings?limit=500");
     await loadCompanies();
-    $("#findings-note").innerHTML = `Every listing we collected, searchable. A score means we
-      read that employer's careers page and compared; a dash means we could not, and
-      <a href="#coverage" class="underline hover:text-white">why is stated per employer</a>.
+    $("#findings-note").innerHTML = `Showing the listings we could check against the
+      employer's own careers page. ${META.not_assessed} more were collected but not
+      verifiable — <a href="#coverage" class="underline hover:text-white">why is stated
+      per employer</a>. Search covers all ${META.assessed + META.not_assessed}.
       Click any row for the evidence behind it.`;
     buildBrowser();
     if (INITIAL.get("listing")) openDetail(INITIAL.get("listing"));

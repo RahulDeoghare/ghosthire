@@ -129,6 +129,21 @@ def test_the_detail_view_marks_derived_dates_the_way_the_list_does():
     assert "accurate to about a week" in detail
 
 
+def test_the_page_opens_on_findings_not_on_everything():
+    """Opening with all 70 listings led with the 66 that could not be checked,
+    which reads as a dump rather than a finding. The default is the listings
+    that carry a verdict; the rest stay one click away."""
+    html = _html()
+    assert 'let FILTER = "checked"' in html
+    assert '["checked",' in html, "a 'checked' filter must exist to default to"
+
+
+def test_long_lists_are_capped_until_asked():
+    html = _html()
+    assert "const PAGE = 25" in html
+    assert "Show ${hidden} more" in html
+
+
 def test_the_modal_is_announced_and_takes_focus():
     html = _html()
     assert 'role="dialog"' in html and 'aria-modal="true"' in html
