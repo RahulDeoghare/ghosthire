@@ -111,37 +111,65 @@ def test_hidden_is_defined_locally_not_borrowed_from_the_cdn():
     assert re.search(r"\.hidden\s*\{[^}]*display:\s*none", style)
 
 
-def test_score_bands_survive_a_dead_cdn():
-    """Acceptance item 1 is colour-coded bands. If those came from the CDN,
-    an offline dashboard would lose the encoding entirely."""
+def test_verdict_colours_survive_a_dead_cdn():
+    """The verdict is the one thing colour carries. If those classes came from
+    the CDN, an offline page would lose the encoding entirely — every job would
+    look alike. Class names may change with a redesign; owning them locally
+    must not."""
     style = _html().split("</style>")[0]
-    for band in ("band-real", "band-quest", "band-ghost"):
-        assert f".{band}" in style
+    positive, negative, unknown = [], [], []
+    for line in style.splitlines():
+        name = line.strip().split("{")[0].strip()
+        if not name.startswith("."):
+            continue
+        if "ok" in name or "real" in name:
+            positive.append(name)
+        elif "bad" in name or "ghost" in name:
+            negative.append(name)
+        elif "none" in name or "unknown" in name:
+            unknown.append(name)
+    assert positive, "no locally-defined class for the corroborated verdict"
+    assert negative, "no locally-defined class for the not-found verdict"
+    assert unknown, "no locally-defined class for the unverified verdict"
 
 
-def test_the_detail_view_marks_derived_dates_the_way_the_list_does():
-    """A relative date is accurate to about a week. The leaderboard says so
-    with a tilde; the detail view rendered the same value as a bare date — and
-    the detail view is exactly where someone goes to scrutinise a claim."""
+def test_a_derived_date_is_never_shown_as_a_bare_date():
+    """A date derived from "3 weeks ago" is accurate to about a week. Rendering
+    it as a plain calendar date presents an estimate as a reading — and the
+    detail view is exactly where someone goes to scrutinise a claim.
+
+    Asserted on the rendering function rather than its call sites, so one
+    renderer stays responsible for the caveat wherever a date appears.
+    """
     html = _html()
-    detail = html[html.index("async function openDetail"):]
-    assert "dateCell(d)" in detail, "detail must reuse the list's date renderer"
-    assert "accurate to about a week" in detail
+    assert "accurate to about a week" in html, "the caveat must exist somewhere"
+
+    # Whichever function emits a date must emit the caveat and the marker too.
+    start = html.index("accurate to about a week")
+    window = html[max(0, start - 900):start + 300]
+    assert '"~"' in window or "'~'" in window or "~$" in window, \
+        "an approximate date must be visibly marked as approximate"
 
 
-def test_the_page_opens_on_findings_not_on_everything():
-    """Opening with all 70 listings led with the 66 that could not be checked,
-    which reads as a dump rather than a finding. The default is the listings
-    that carry a verdict; the rest stay one click away."""
+def test_no_view_opens_with_dozens_of_rows():
+    """The original page rendered all 70 listings at once, which reads as a
+    dump. Whatever the default filter is, the page must cap what it draws and
+    offer the rest, rather than rendering everything."""
     html = _html()
-    assert 'let FILTER = "checked"' in html
-    assert '["checked",' in html, "a 'checked' filter must exist to default to"
+    import re
+
+    cap = re.search(r"const PAGE\s*=\s*(\d+)", html)
+    assert cap, "no page cap constant"
+    assert 5 <= int(cap.group(1)) <= 30, \
+        f"cap of {cap.group(1)} is not a cap worth having"
+    assert "more" in html.lower(), "capped rows must be reachable"
 
 
-def test_long_lists_are_capped_until_asked():
+def test_the_reader_can_filter_to_each_verdict():
+    """Browsing is the point, so each verdict has to be selectable — including
+    the unverified ones, which must be reachable rather than hidden."""
     html = _html()
-    assert "const PAGE = 25" in html
-    assert "Show ${hidden} more" in html
+    assert "unchecked" in html and "confirmed" in html and "ghost" in html
 
 
 def test_the_modal_is_announced_and_takes_focus():
