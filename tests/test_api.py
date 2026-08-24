@@ -97,6 +97,70 @@ def test_a_non_match_still_gives_the_reader_somewhere_to_check(client):
     assert detail["career_page_url"].startswith("http")
 
 
+def test_the_app_runs_with_a_relocated_database(tmp_path, monkeypatch):
+    """A read-only deployment cannot write beside the repo, so the database
+    path has to move via the environment — which `.env.example` documented
+    long before it worked."""
+    monkeypatch.setenv("GHOSTHIRE_DB", str(tmp_path / "elsewhere.db"))
+    import importlib
+    from ghosthire import db as db_module
+    importlib.reload(db_module)
+
+    assert db_module.DB_PATH == tmp_path / "elsewhere.db"
+    conn = db_module.connect()
+    db_module.init(conn)
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1, \
+        "foreign_keys is not optional, wherever the file lives"
+    conn.close()
+    monkeypatch.delenv("GHOSTHIRE_DB")
+    importlib.reload(db_module)
+
+
+def test_connect_survives_a_read_only_filesystem(tmp_path):
+    """WAL needs to create a sidecar file. On a read-only deployment that
+    fails, and it is not worth failing the request over — WAL buys concurrency
+    with a writer, and a read-only replica has no writer.
+
+    Exercised against a directory the OS actually refuses to write, rather
+    than a patched sqlite3, so it tests the real failure.
+    """
+    import os
+    import stat
+    from ghosthire import db as db_module
+
+    build = tmp_path / "build"
+    build.mkdir()
+    seeded = db_module.connect(build / "built.db")
+    db_module.init(seeded)
+    seeded.close()
+
+    ro_dir = tmp_path / "ro"
+    ro_dir.mkdir()
+    path = db_module.read_only_copy(build / "built.db", ro_dir / "served.db")
+    os.chmod(ro_dir, stat.S_IRUSR | stat.S_IXUSR)   # r-x: no new files
+
+    try:
+        conn = db_module.connect(path)              # must not raise
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM job_listings").fetchone()[0] == 0
+        conn.close()
+    finally:
+        os.chmod(ro_dir, stat.S_IRWXU)
+
+
+def test_the_trigger_is_honestly_unavailable_without_the_cli(client, monkeypatch):
+    """On a Python-only host the Bright Data CLI does not exist. Saying so
+    beats a 502 that looks like the collector broke."""
+    from ghosthire import bdata
+    monkeypatch.setattr(bdata.shutil, "which", lambda _: None)
+
+    r = client.post("/api/scrape/trigger",
+                    json={"key": "board_company", "company": "razorpay"})
+    assert r.status_code == 501
+    assert "bdata" in r.json()["detail"]
+
+
 def test_missing_listing_is_404(client):
     assert client.get("/api/listings/999999").status_code == 404
 

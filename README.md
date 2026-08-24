@@ -185,6 +185,17 @@ proposals, gates, approvals and the rejection — are in
 [`data/heal/`](data/heal/) and written up in
 [`docs/self-healing.md`](docs/self-healing.md).
 
+## Deploying
+
+The dashboard and all read endpoints run on Vercel as a Python serverless
+function; `api/index.py` rebuilds the database into `/tmp` on cold start from
+the committed snapshot archive, in about 0.4s.
+
+Collector runs do not, and cannot: `POST /api/scrape/trigger` and `sweep.sh`
+shell out to a Node CLI that the Python runtime does not have. The trigger
+returns 501 there rather than failing obscurely. To keep them, use a host with
+a real process and writable disk. See [`docs/deployment.md`](docs/deployment.md).
+
 ## Findings
 
 See [`findings.md`](findings.md) for the current results with clickable

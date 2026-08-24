@@ -507,6 +507,18 @@ def trigger(request: TriggerRequest) -> JSONResponse:
     The company guard applies here exactly as it does in a CLI sweep: a
     triggered run is not a licence to attribute rows to whoever was asked for.
     """
+    from .bdata import cli_available
+    if not cli_available():
+        # Serverless hosts run the Python runtime only. Shelling out to the
+        # Bright Data CLI needs a Node binary and a writable disk, so this
+        # endpoint is honestly unavailable there rather than mysteriously 502.
+        raise HTTPException(
+            501,
+            "collector runs are unavailable on this deployment: the `bdata` CLI "
+            "is not installed here. Run the project locally to trigger a scrape "
+            "— the dashboard is served from the committed snapshot archive.",
+        )
+
     doc = load_collectors()
     matches = [c for c in (doc.get("collectors") or []) if c["key"] == request.key]
     if not matches:

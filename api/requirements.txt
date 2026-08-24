@@ -1,0 +1,6 @@
+# Runtime only. The root requirements.txt carries the dev tools (pytest, ruff,
+# uvicorn) which the serverless function has no use for.
+fastapi==0.141.1
+rapidfuzz==3.14.5
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3
