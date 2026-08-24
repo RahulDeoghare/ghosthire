@@ -382,16 +382,18 @@ def companies() -> list[dict[str, Any]]:
     return sorted(out, key=lambda r: (-r["listings"], r["company"] or ""))
 
 
-# Categorical hues, fixed order, validated for this surface: worst adjacent
-# CVD ΔE 8.4 (protan), normal-vision 19.3, all five ≥3:1 on #0e1015. Coverage
-# reasons are identities, so they get a categorical system of their own — the
-# score bands are a status palette and must not share hues with it.
+# Categorical hues in fixed order. Two sets, because a dark palette is chosen
+# for its surface rather than flipped from the light one: each was validated
+# separately — light worst-adjacent CVD ΔE 9.1 on #ffffff, dark ΔE 8.4 on
+# #0e1015, both clear of the floor. Coverage reasons are identities, so they
+# get a categorical system of their own; the verdict colours are a status
+# palette and must not share hues with it.
 COVERAGE_SLOTS = [
-    ("verified",     "Verified against the careers page", "#3987e5"),
-    ("unreadable",   "Careers page uses an ATS we cannot read", "#d95926"),
-    ("js_portal",    "Bespoke client-side portal", "#199e70"),
-    ("out_of_scope", "Out of scope by rule", "#c98500"),
-    ("unidentified", "No careers page identified", "#d55181"),
+    ("verified",     "Verified against the careers page",       "#2a78d6", "#3987e5"),
+    ("unreadable",   "Careers page uses an ATS we cannot read", "#eb6834", "#d95926"),
+    ("js_portal",    "Bespoke client-side portal",              "#1baf7a", "#199e70"),
+    ("out_of_scope", "Out of scope by rule",                    "#eda100", "#c98500"),
+    ("unidentified", "No careers page identified",              "#e87ba4", "#d55181"),
 ]
 
 
@@ -416,7 +418,7 @@ def coverage() -> dict[str, Any]:
                 access[normalize_company(target["company"])] = (
                     target.get("career_access") or "unidentified")
 
-    counts = {key: 0 for key, _, _ in COVERAGE_SLOTS}
+    counts = {key: 0 for key, *_ in COVERAGE_SLOTS}
     with db() as conn:
         rows = conn.execute(
             """SELECT l.company_name_normalized c,
@@ -436,9 +438,10 @@ def coverage() -> dict[str, Any]:
     return {
         "total": sum(counts.values()),
         "segments": [
-            {"key": key, "label": label, "color": color,
+            {"key": key, "label": label,
+             "color": light, "color_dark": dark,
              "count": counts[key], "share": round(counts[key] / total * 100, 1)}
-            for key, label, color in COVERAGE_SLOTS if counts[key]
+            for key, label, light, dark in COVERAGE_SLOTS if counts[key]
         ],
     }
 

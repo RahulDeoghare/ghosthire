@@ -175,6 +175,44 @@ def test_the_reader_can_filter_to_each_verdict():
     assert "unchecked" in html and "confirmed" in html and "ghost" in html
 
 
+# --------------------------------------------------------------------------
+# theming
+# --------------------------------------------------------------------------
+
+def test_both_themes_are_defined_locally():
+    """A theme built out of CDN utility classes disappears with the CDN. Both
+    token sets live in the page's own stylesheet."""
+    style = _html().split("</style>")[0]
+    assert ":root{" in style.replace(" ", "")
+    assert '[data-theme="dark"]' in style
+
+
+def test_the_theme_is_applied_before_the_page_paints():
+    """Reading the preference after render flashes the wrong theme. The
+    applier has to run in <head>, before <body> exists."""
+    html = _html()
+    head = html[:html.index("</head>")]
+    assert "data-theme" in head, "no pre-paint theme applier in <head>"
+    assert "prefers-color-scheme" in head, "the OS preference must be the default"
+
+
+def test_stored_theme_access_is_guarded():
+    """localStorage throws outright in some privacy modes. A theme preference
+    is not worth a blank page."""
+    html = _html()
+    for hit in ("localStorage.getItem", "localStorage.setItem"):
+        i = html.index(hit)
+        assert "try" in html[max(0, i - 200):i], f"{hit} is not inside a try"
+
+
+def test_the_chart_carries_a_palette_for_each_surface():
+    """A dark palette is stepped for its own background, not flipped from the
+    light one — each was validated separately against its surface."""
+    html = _html()
+    assert "color_dark" in html, "the chart must choose per surface"
+    assert "isDark()" in html
+
+
 def test_the_modal_is_announced_and_takes_focus():
     html = _html()
     assert 'role="dialog"' in html and 'aria-modal="true"' in html
