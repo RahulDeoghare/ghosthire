@@ -6,6 +6,13 @@ does not list on its own careers page.
 Every claim it makes cites two URLs and the collector that produced them, so any
 finding can be checked, or refuted, in about ten seconds.
 
+**Live: https://ghosthire-psi.vercel.app**
+
+The hosted instance rebuilds its database on cold start from the snapshot
+archive in this repository, so the numbers there and the numbers you get from
+`db --from-snapshots` locally come from the same files and cannot drift.
+Collecting *new* data is local-only — see [Deploying](#deploying).
+
 ```
 collector c_mt1senswibym6o5va · board_company_razorpay · 3 rows · 12.9s
 COMPANY      TITLE                                       LOCATION    POSTED
