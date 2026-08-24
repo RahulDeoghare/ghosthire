@@ -66,8 +66,19 @@
       </div>
       <select id="company-filter" class="rounded-lg px-3 py-2.5 text-sm sm:w-64"></select>
     </div>
-    <div id="filters" class="flex flex-wrap gap-2 mt-3"></div>
+    <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
+      <div id="filters" class="flex flex-wrap gap-2"></div>
+      <label class="text-xs muted flex items-center gap-2 shrink-0">
+        Sort
+        <select id="sort" class="rounded-lg px-2 py-1.5 text-xs">
+          <option value="verdict">Verified first</option>
+          <option value="recent">Most recent</option>
+          <option value="company">Employer A–Z</option>
+        </select>
+      </label>
+    </div>
   </div>
+  <div id="context" class="border-t" style="border-color:var(--line2);background:var(--bg)"></div>
 </header>
 
 <main class="max-w-6xl mx-auto px-5 py-6">
@@ -76,7 +87,23 @@
     <p class="text-xs dim">Every verdict links the job and the employer's own careers page.</p>
   </div>
 
-  <div id="jobs" class="space-y-2.5"></div>
+  <div id="jobs" class="space-y-2">
+    
+    <!-- skeletons: a blank page during the fetch reads as "no jobs" -->
+    <div class="card rounded-xl p-5 animate-pulse"><div class="flex gap-4">
+      <div class="w-10 h-10 rounded-lg" style="background:var(--line)"></div>
+      <div class="flex-1 space-y-2.5">
+        <div class="h-4 rounded w-1/3" style="background:var(--line)"></div>
+        <div class="h-3 rounded w-1/5" style="background:var(--line2)"></div>
+        <div class="h-3 rounded w-2/5" style="background:var(--line2)"></div></div></div></div>
+    <div class="card rounded-xl p-5 animate-pulse"><div class="flex gap-4">
+      <div class="w-10 h-10 rounded-lg" style="background:var(--line)"></div>
+      <div class="flex-1 space-y-2.5">
+        <div class="h-4 rounded w-2/5" style="background:var(--line)"></div>
+        <div class="h-3 rounded w-1/6" style="background:var(--line2)"></div>
+        <div class="h-3 rounded w-1/3" style="background:var(--line2)"></div></div></div></div>
+  
+  </div>
 
   <!-- ── how we verify ────────────────────────────────────────────────── -->
   <section id="how" class="mt-14 pt-10 border-t" style="border-color:var(--line)">
@@ -91,17 +118,17 @@
 
     <div class="grid sm:grid-cols-3 gap-3 mt-5">
       <div class="card rounded-xl p-4">
-        <span class="pill v-ok text-xs px-2 py-1">Listed by employer</span>
+        <span id="legend-ok"></span>
         <p class="muted text-sm mt-3">Found on the company's own careers page. The
           ordinary, healthy case.</p>
       </div>
       <div class="card rounded-xl p-4">
-        <span class="pill v-bad text-xs px-2 py-1">Not on careers page</span>
+        <span id="legend-bad"></span>
         <p class="muted text-sm mt-3">Advertised on the board, absent from the
           employer's own listings. Open both links and judge for yourself.</p>
       </div>
       <div class="card rounded-xl p-4">
-        <span class="pill v-none text-xs px-2 py-1">Unverified</span>
+        <span id="legend-none"></span>
         <p class="muted text-sm mt-3">We could not read this employer's careers
           page, so there is no verdict — not a pass, not a fail.</p>
       </div>
@@ -168,33 +195,83 @@ function linkOrText(url, label, cls) {
 }
 
 let ALL = [], META = null, WHY = {}, FILTER = "all", EXPANDED = false;
+// What the current filter and search actually produced, so the detail view can
+// step through the same list the reader is looking at rather than all of it.
+let VISIBLE = [];
 const PAGE = 20;
 const INITIAL = new URLSearchParams(location.search);
 
 async function api(p){ const r = await fetch(p); if(!r.ok) throw new Error(`${p} → ${r.status}`); return r.json(); }
 
 // ── verdict, in the reader's language rather than the schema's ──────────
+// A glyph as well as a colour: colour alone fails for a colour-blind reader,
+// in print, and in forced-colours mode — and the verdict is the one thing on
+// the card that must never be ambiguous.
+const GLYPH = {
+  ok:   `<svg viewBox="0 0 16 16" class="w-3 h-3 shrink-0" fill="none" stroke="currentColor"
+          stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 5"/></svg>`,
+  bad:  `<svg viewBox="0 0 16 16" class="w-3 h-3 shrink-0" fill="none" stroke="currentColor"
+          stroke-width="2.2" stroke-linecap="round"><path d="M8 3.5v5.5"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></svg>`,
+  none: `<svg viewBox="0 0 16 16" class="w-3 h-3 shrink-0" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round"><path d="M6 6a2 2 0 113 1.7c-.6.4-1 .8-1 1.6"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></svg>`,
+};
+
 function verdict(r) {
-  if (!r.assessed) return {cls:"v-none", label:"Unverified", note:"careers page not readable"};
-  if (r.ghost_score === 0) return {cls:"v-ok", label:"Listed by employer", note:"found on their careers page"};
-  if (r.ghost_score >= 60) return {cls:"v-bad", label:"Likely ghost", note:`score ${r.ghost_score}`};
-  return {cls:"v-bad", label:"Not on careers page", note:`score ${r.ghost_score}`};
+  if (!r.assessed)
+    return {cls:"v-none", glyph:GLYPH.none, label:"Unverified"};
+  if (r.ghost_score === 0)
+    return {cls:"v-ok", glyph:GLYPH.ok, label:"Listed by employer"};
+  return {cls:"v-bad", glyph:GLYPH.bad, label:"Not on careers page"};
 }
 
-const AVATAR = ["#1f6feb","#0f7a55","#8a5a00","#a32b2b","#5b3fa8","#0e6b7a"];
+function verdictPill(r, extra="") {
+  const v = verdict(r);
+  return `<span class="pill ${v.cls} inline-flex items-center gap-1.5 text-xs px-2.5 py-1
+    whitespace-nowrap ${extra}">${v.glyph}${v.label}</span>`;
+}
+
+// Muted tints rather than saturated brand colours: fifty of these on one
+// screen should read as texture, not as fifty competing signals. The verdict
+// pill is the only thing on a card allowed to shout.
+const AVATAR = ["#e8eefb #2c4f86","#e6f3ee #1d6b4f","#fbf0e2 #7a5312",
+                "#fbeceb #8c3330","#efeafb #4f3d8c","#e6f1f4 #175a68"];
 function avatar(name) {
   const initials = String(name || "?").replace(/[^A-Za-z ]/g, "").trim()
     .split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
   let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `<span class="w-10 h-10 rounded-lg flex items-center justify-center text-white
-    text-xs font-semibold shrink-0" style="background:${AVATAR[h % AVATAR.length]}">${esc(initials)}</span>`;
+  const [bg, fg] = AVATAR[h % AVATAR.length].split(" ");
+  return `<span class="w-10 h-10 rounded-lg flex items-center justify-center text-xs
+    font-semibold shrink-0" style="background:${bg};color:${fg}">${esc(initials)}</span>`;
 }
+
+// The board says "3 weeks ago"; we stored an ISO date and were rendering
+// "~2026-08-10", which is both colder and further from the source. A date
+// derived from a relative phrase is shown as a relative phrase, and one read
+// as a calendar date is shown as a date — so the *form* carries the precision
+// and no tilde is needed to explain it.
+function ago(iso) {
+  const days = Math.round((Date.now() - Date.parse(iso + "T00:00:00Z")) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7)  return `${days} days ago`;
+  const w = Math.round(days / 7);
+  if (w < 5)     return `${w} week${w > 1 ? "s" : ""} ago`;
+  const m = Math.round(days / 30);
+  if (m < 12)    return `${m} month${m > 1 ? "s" : ""} ago`;
+  return "over a year ago";
+}
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function posted(r) {
   if (!r.date_posted) return `<span class="dim">posting date not shown</span>`;
-  const approx = r.date_confidence === "relative";
-  return `<span title="${approx ? "derived from a relative date such as '3 weeks ago' — accurate to about a week"
-    : "read from the listing"}">${approx ? "~" : ""}${esc(r.date_posted)}</span>`;
+  if (r.date_confidence === "relative") {
+    return `<span title="the listing said this in words rather than giving a date, so it is accurate to about its own unit">${
+      esc(ago(r.date_posted))}</span>`;
+  }
+  const d = new Date(r.date_posted + "T00:00:00Z");
+  return `<span title="the listing gave this date">${d.getUTCDate()} ${
+    MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}</span>`;
 }
 
 const WHY_SHORT = {
@@ -203,24 +280,31 @@ const WHY_SHORT = {
   unreadable:   "their applicant-tracking system is one we cannot read yet",
 };
 
+const PIN = `<svg viewBox="0 0 16 16" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor"
+  stroke-width="1.6"><path d="M8 14s4.5-4.2 4.5-7.4A4.5 4.5 0 003.5 6.6C3.5 9.8 8 14 8 14z"/><circle cx="8" cy="6.5" r="1.6"/></svg>`;
+const CLOCK = `<svg viewBox="0 0 16 16" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor"
+  stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.2l2 1.2"/></svg>`;
+
 function jobCard(r) {
-  const v = verdict(r);
-  return `<article class="job card rounded-xl p-4 cursor-pointer" data-id="${r.id}">
-    <div class="flex gap-3.5">
+  const why = !r.assessed && WHY_SHORT[WHY[r.company]];
+  return `<article class="job card rounded-xl px-4 py-3.5 sm:px-5 sm:py-4 cursor-pointer" data-id="${r.id}"
+      tabindex="0" role="button" aria-label="${esc(r.job_title)} at ${esc(r.company)}">
+    <div class="flex gap-4">
       ${avatar(r.company)}
       <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-start justify-between gap-2">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
           <div class="min-w-0">
-            <h3 class="font-semibold leading-snug">${esc(r.job_title)}</h3>
+            <h3 class="font-semibold leading-snug text-[15px]">${esc(r.job_title)}</h3>
             <p class="text-sm muted mt-0.5">${esc(r.company)}</p>
           </div>
-          <span class="pill ${v.cls} text-xs px-2.5 py-1 whitespace-nowrap">${v.label}</span>
+          ${verdictPill(r)}
         </div>
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-xs muted">
-          ${r.location ? `<span>${esc(r.location)}</span>` : ""}
-          ${r.salary_range ? `<span class="font-medium" style="color:var(--ink)">${esc(r.salary_range)}</span>` : ""}
-          <span>${posted(r)}</span>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2.5 text-xs muted">
+          ${r.location ? `<span class="inline-flex items-center gap-1.5">${PIN}${esc(r.location)}</span>` : ""}
+          ${r.salary_range ? `<span class="font-semibold" style="color:var(--ink)">${esc(r.salary_range)}</span>` : ""}
+          <span class="inline-flex items-center gap-1.5">${CLOCK}${posted(r)}</span>
         </div>
+        ${why ? `<p class="text-xs dim mt-2.5">Not checked — ${esc(why)}.</p>` : ""}
       </div>
     </div>
   </article>`;
@@ -254,20 +338,41 @@ function render() {
   let rows = ALL.filter(r => test(r) && matches(r, q));
   if (employer) rows = rows.filter(r => r.company === employer);
 
-  // Verified first, worst within that: a scan starts where there is something
-  // to look at. Unverified sort last but are never hidden.
-  rows.sort((a, b) => (b.assessed - a.assessed)
-    || ((b.ghost_score ?? -1) - (a.ghost_score ?? -1))
-    || a.company.localeCompare(b.company));
+  const SORTS = {
+    // Verified first, and within that the ones with something to answer for.
+    // A scan should start where there is something to look at.
+    verdict: (a, b) => (b.assessed - a.assessed)
+      || ((b.ghost_score ?? -1) - (a.ghost_score ?? -1))
+      || a.company.localeCompare(b.company),
+    // Undated listings sort last rather than pretending to be old or new.
+    recent: (a, b) => (b.date_posted || "").localeCompare(a.date_posted || "")
+      || a.company.localeCompare(b.company),
+    company: (a, b) => a.company.localeCompare(b.company)
+      || a.job_title.localeCompare(b.job_title),
+  };
+  rows.sort(SORTS[$("#sort").value] || SORTS.verdict);
 
+  VISIBLE = rows;
   const shown = EXPANDED ? rows : rows.slice(0, PAGE);
   const hidden = rows.length - shown.length;
   const checked = rows.filter(r => r.assessed).length;
 
-  $("#result-count").innerHTML = rows.length
-    ? `<strong>${rows.length}</strong> job${rows.length === 1 ? "" : "s"}
-       · ${checked} checked against the employer`
-    : "";
+  $("#context").innerHTML = `<div class="max-w-6xl mx-auto px-5 py-2.5 flex flex-wrap
+    items-center gap-x-5 gap-y-1 text-xs muted">
+    <span><strong style="color:var(--ink)">${ALL.length}</strong> jobs</span>
+    <span><strong style="color:var(--ink)">${new Set(ALL.map(r => r.company)).size}</strong> employers</span>
+    <span><strong style="color:var(--ink)">${ALL.filter(r => r.assessed).length}</strong> checked against the employer</span>
+    <span class="dim">updated from the archive on every deploy</span>
+  </div>`;
+
+  const filtered = rows.length !== ALL.length;
+  $("#result-count").innerHTML = !rows.length ? ""
+    : filtered
+      ? `Showing <strong>${rows.length}</strong> of ${ALL.length} jobs`
+        + (checked ? ` · ${checked} checked` : "")
+      : `<span class="dim">Newest and most-questioned first. Press
+         <kbd class="px-1 py-0.5 rounded text-[11px]"
+           style="background:var(--card);border:1px solid var(--line)">/</kbd> to search.</span>`;
   $("#jobs").innerHTML = rows.length
     ? shown.map(jobCard).join("") + (hidden > 0
       ? `<button id="more" class="w-full card rounded-xl py-3 text-sm muted hover:text-black">
@@ -276,8 +381,14 @@ function render() {
          <p class="font-medium">No job matches that search.</p>
          <p class="muted text-sm mt-1">Try a different title, company or city.</p></div>`;
 
-  document.querySelectorAll("article[data-id]").forEach(el =>
-    el.addEventListener("click", () => openDetail(el.dataset.id)));
+  document.querySelectorAll("article[data-id]").forEach(el => {
+    el.addEventListener("click", () => openDetail(el.dataset.id));
+    // The cards are focusable, so they have to be operable from the keyboard
+    // too — a focus ring that does nothing on Enter is worse than none.
+    el.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(el.dataset.id); }
+    });
+  });
   const more = $("#more");
   if (more) more.addEventListener("click", () => { EXPANDED = true; render(); });
 
@@ -289,8 +400,11 @@ function render() {
 // ── detail ─────────────────────────────────────────────────────────────
 let lastFocus = null;
 
+let CURRENT = null;
+
 async function openDetail(id) {
   lastFocus = document.activeElement;
+  CURRENT = id;
   const d = await api(`/api/listings/${id}`);
   const v = verdict(d), m = d.matched_career_listing;
 
@@ -303,12 +417,18 @@ async function openDetail(id) {
           <p class="muted text-sm mt-0.5">${esc(d.company)}${d.location ? " · " + esc(d.location) : ""}</p>
         </div>
       </div>
-      <button onclick="closeDetail()" aria-label="Close"
-        class="muted hover:text-black text-2xl leading-none px-2 -mt-1">&times;</button>
+      <div class="flex items-center gap-1 shrink-0">
+        <button onclick="step(-1)" aria-label="Previous job" title="Previous (←)"
+          class="w-8 h-8 rounded-lg muted hover:text-black" style="border:1px solid var(--line)">‹</button>
+        <button onclick="step(1)" aria-label="Next job" title="Next (→)"
+          class="w-8 h-8 rounded-lg muted hover:text-black" style="border:1px solid var(--line)">›</button>
+        <button onclick="closeDetail()" aria-label="Close"
+          class="w-8 h-8 rounded-lg muted hover:text-black ml-1" style="border:1px solid var(--line)">✕</button>
+      </div>
     </div>
 
     <div class="flex flex-wrap gap-2 mt-4">
-      <span class="pill ${v.cls} text-xs px-2.5 py-1">${v.label}</span>
+      ${verdictPill(d)}
       ${d.salary_range ? `<span class="pill chip text-xs px-2.5 py-1">${esc(d.salary_range)}</span>` : ""}
       <span class="pill chip text-xs px-2.5 py-1">${posted(d)}</span>
     </div>
@@ -366,6 +486,13 @@ async function openDetail(id) {
   history.replaceState(null, "", `?${p}`);
 }
 
+function step(delta) {
+  const i = VISIBLE.findIndex(r => String(r.id) === String(CURRENT));
+  if (i < 0) return;
+  const next = VISIBLE[i + delta];
+  if (next) openDetail(next.id);
+}
+
 function closeDetail(){
   $("#detail").classList.add("hidden");
   const p = new URLSearchParams(location.search); p.delete("listing");
@@ -374,7 +501,12 @@ function closeDetail(){
   lastFocus = null;
 }
 $("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeDetail(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
+document.addEventListener("keydown", e => {
+  if ($("#detail").classList.contains("hidden")) return;
+  if (e.key === "Escape") closeDetail();
+  if (e.key === "ArrowRight") step(1);
+  if (e.key === "ArrowLeft") step(-1);
+});
 
 // ── the supporting sections ────────────────────────────────────────────
 async function loadCoverage() {
@@ -486,10 +618,25 @@ async function start() {
 
     $("#q").addEventListener("input", () => { EXPANDED = false; render(); });
     $("#company-filter").addEventListener("change", () => { EXPANDED = false; render(); });
+    $("#sort").addEventListener("change", () => { EXPANDED = false; render(); });
+
+    // "/" focuses search, the way every list-and-search tool behaves.
+    document.addEventListener("keydown", e => {
+      if (e.key === "/" && document.activeElement !== $("#q")
+          && $("#detail").classList.contains("hidden")) {
+        e.preventDefault(); $("#q").focus();
+      }
+    });
 
     if (INITIAL.get("q")) $("#q").value = INITIAL.get("q");
     if (FILTERS.some(f => f[0] === INITIAL.get("show"))) FILTER = INITIAL.get("show");
     if (companies.includes(INITIAL.get("employer"))) $("#company-filter").value = INITIAL.get("employer");
+
+    for (const [id, row] of [["#legend-ok",   {assessed:true,  ghost_score:0}],
+                            ["#legend-bad",  {assessed:true,  ghost_score:45}],
+                            ["#legend-none", {assessed:false, ghost_score:null}]]) {
+      $(id).innerHTML = verdictPill(row);
+    }
 
     render();
     if (INITIAL.get("listing")) openDetail(INITIAL.get("listing"));

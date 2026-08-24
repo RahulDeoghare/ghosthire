@@ -133,22 +133,25 @@ def test_verdict_colours_survive_a_dead_cdn():
     assert unknown, "no locally-defined class for the unverified verdict"
 
 
-def test_a_derived_date_is_never_shown_as_a_bare_date():
-    """A date derived from "3 weeks ago" is accurate to about a week. Rendering
-    it as a plain calendar date presents an estimate as a reading — and the
-    detail view is exactly where someone goes to scrutinise a claim.
+def test_a_date_is_shown_in_the_form_the_source_used():
+    """51 of 70 listings gave their age in words — "3 weeks ago" — and we
+    stored an ISO date. Rendering that back as a calendar date presents an
+    estimate as a reading; rendering it as a phrase keeps the precision
+    visible in the shape of the value, without needing a symbol to explain it.
 
-    Asserted on the rendering function rather than its call sites, so one
-    renderer stays responsible for the caveat wherever a date appears.
+    So: a relative source renders relative, an exact source renders a date.
     """
     html = _html()
-    assert "accurate to about a week" in html, "the caveat must exist somewhere"
+    body = html[html.index("function posted("):]
+    body = body[:body.index("\n}")]
 
-    # Whichever function emits a date must emit the caveat and the marker too.
-    start = html.index("accurate to about a week")
-    window = html[max(0, start - 900):start + 300]
-    assert '"~"' in window or "'~'" in window or "~$" in window, \
-        "an approximate date must be visibly marked as approximate"
+    assert '"relative"' in body, "the renderer must branch on how the date was obtained"
+    rel = body[body.index('"relative"'):]
+    assert "ago(" in rel, "a relative source must render as a relative phrase"
+
+    # And the exact branch must render an actual date rather than a phrase.
+    assert "MONTHS[" in body, "an exact source must render as a calendar date"
+    assert "title=" in body, "the imprecision must still be explained on hover"
 
 
 def test_no_view_opens_with_dozens_of_rows():
