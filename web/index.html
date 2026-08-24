@@ -58,8 +58,20 @@
      left a job title and its verdict marooned at opposite edges. The reading
      column is capped near 60rem and the shell sits wider, so a large window
      gets margin instead of stretched rows. */
-  .shell{max-width:76rem;margin-inline:auto;padding-inline:1.25rem;}
+  .shell{max-width:84rem;margin-inline:auto;padding-inline:1.25rem;}
   .column{max-width:60rem;margin-inline:auto;}
+  /* Two panes on a wide screen: the list keeps a comfortable measure while the
+     open job fills what would otherwise be margin. Below the breakpoint the
+     pane is not rendered and the job opens as a dialog instead. */
+  .panes{display:grid;gap:1.25rem;}
+  /* In the pane the detail needs its own surface; inside the dialog the dialog
+     already provides one, so it must not draw a second card inside a card. */
+  #pane .detail-inner{background:var(--card);border:1px solid var(--line);
+                      border-radius:1rem;padding:1.5rem;}
+  @media (min-width:1060px){
+    .panes{grid-template-columns:minmax(0,25rem) minmax(0,1fr);align-items:start;}
+    .pane{position:sticky;top:1rem;max-height:calc(100vh - 2rem);overflow-y:auto;}
+  }
 
   .card{background:var(--card);border:1px solid var(--line);}
   .raised{background:var(--raised);}
@@ -105,7 +117,7 @@
     </div>
   </div>
 
-  <div class="shell pb-5"><div class="column">
+  <div class="shell pb-5">
     <div class="flex flex-col sm:flex-row gap-2">
       <div class="relative flex-1">
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color:var(--dim)"
@@ -128,16 +140,17 @@
         </select>
       </label>
     </div>
-    </div>
   </div>
   <div id="context" class="border-t" style="border-color:var(--line2);background:var(--bg)"></div>
 </header>
 
-<main class="shell py-6"><div class="column">
+<main class="shell py-6">
   <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
     <p id="result-count" class="text-sm muted"></p>
     <p class="text-xs dim">Every verdict links the job and the employer's own careers page.</p>
   </div>
+
+  <div class="panes">
 
   <div id="jobs" class="space-y-2">
     
@@ -157,8 +170,11 @@
   
   </div>
 
+    <aside id="pane" class="pane hidden"></aside>
+  </div>
+
   <!-- ── how we verify ────────────────────────────────────────────────── -->
-  <section id="how" class="mt-14 pt-10 border-t" style="border-color:var(--line)">
+  <section id="how" class="column mt-14 pt-10 border-t" style="border-color:var(--line)">
     <h2 class="text-xl font-semibold tracking-tight">How a job gets verified</h2>
     <p class="muted text-sm mt-2 max-w-3xl">
       We read the job board and, separately, the employer's own careers page, then
@@ -203,7 +219,6 @@
       </div>
     </details>
   </section>
-  </div>
 </main>
 
 <footer class="border-t mt-10" style="border-color:var(--line)">
@@ -455,6 +470,7 @@ function render() {
 
   document.querySelectorAll("[data-filter]").forEach(b =>
     b.className = `chip pill px-3 py-1.5 text-xs ${b.dataset.filter === FILTER ? "on" : ""}`);
+  if (CURRENT !== null) markSelected(CURRENT);
   syncUrl();
 }
 
@@ -469,7 +485,8 @@ async function openDetail(id) {
   const d = await api(`/api/listings/${id}`);
   const v = verdict(d), m = d.matched_career_listing;
 
-  $("#detail-body").innerHTML = `
+  const body = `
+    <div class="detail-inner">
     <div class="flex items-start justify-between gap-4">
       <div class="flex gap-3.5 min-w-0">
         ${avatar(d.company)}
@@ -539,12 +556,43 @@ async function openDetail(id) {
 
     <p class="text-xs dim mt-5 pt-4 border-t" style="border-color:var(--line)">
       Collected by <span class="mono">${esc(d.collector_id || "unknown")}</span>
-      · archived before anything read it</p>`;
+      · archived before anything read it</p>
+    </div>`;
 
-  $("#detail").classList.remove("hidden");
-  const btn = $("#detail-body button"); if (btn) btn.focus();
+
+  // Tailwind's lg: and the pane's own media query would have to agree forever;
+  // one source of truth is cheaper.
+  if (WIDE()) {
+    $("#pane").innerHTML = body;
+    $("#pane").classList.remove("hidden");
+    markSelected(id);
+  } else {
+    $("#detail-body").innerHTML = body;
+    $("#detail").classList.remove("hidden");
+    const btn = $("#detail-body button"); if (btn) btn.focus();
+  }
   const p = new URLSearchParams(location.search); p.set("listing", id);
   history.replaceState(null, "", `?${p}`);
+}
+
+const WIDE = () => matchMedia("(min-width:1060px)").matches;
+
+function markSelected(id) {
+  document.querySelectorAll("article[data-id]").forEach(el => {
+    const on = String(el.dataset.id) === String(id);
+    el.style.borderColor = on ? "var(--accent)" : "";
+    el.style.background = on ? "var(--raised)" : "";
+  });
+}
+
+function paneEmpty() {
+  if (!WIDE()) { $("#pane").classList.add("hidden"); return; }
+  $("#pane").classList.remove("hidden");
+  $("#pane").innerHTML = `<div class="card rounded-2xl p-8 text-center">
+    <p class="font-medium">Pick a job to see the evidence</p>
+    <p class="muted text-sm mt-1.5 max-w-xs mx-auto">Each one shows the advert and the
+      employer's own careers page side by side, so you can judge it yourself.</p>
+  </div>`;
 }
 
 function step(delta) {
@@ -556,6 +604,9 @@ function step(delta) {
 
 function closeDetail(){
   $("#detail").classList.add("hidden");
+  CURRENT = null;
+  markSelected(null);
+  paneEmpty();
   const p = new URLSearchParams(location.search); p.delete("listing");
   history.replaceState(null, "", p.toString() ? `?${p}` : location.pathname);
   if (lastFocus?.focus) lastFocus.focus();
@@ -563,8 +614,11 @@ function closeDetail(){
 }
 $("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeDetail(); });
 document.addEventListener("keydown", e => {
-  if ($("#detail").classList.contains("hidden")) return;
+  const open = CURRENT !== null;
+  const dialog = !$("#detail").classList.contains("hidden");
+  if (!open && !dialog) return;
   if (e.key === "Escape") closeDetail();
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
   if (e.key === "ArrowRight") step(1);
   if (e.key === "ArrowLeft") step(-1);
 });
@@ -724,7 +778,15 @@ async function start() {
     }
 
     render();
+    paneEmpty();
     if (INITIAL.get("listing")) openDetail(INITIAL.get("listing"));
+
+    // Crossing the breakpoint must move an open job between the pane and the
+    // dialog, or it ends up rendered into whichever one is now hidden.
+    matchMedia("(min-width:1060px)").addEventListener("change", () => {
+      if (CURRENT !== null) { $("#detail").classList.add("hidden"); openDetail(CURRENT); }
+      else paneEmpty();
+    });
     loadCoverage(); loadCollectors(); loadHeal();
   } catch (err) {
     $("#jobs").innerHTML = `<div class="card rounded-xl p-6">

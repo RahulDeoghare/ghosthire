@@ -213,6 +213,28 @@ def test_the_chart_carries_a_palette_for_each_surface():
     assert "isDark()" in html
 
 
+def test_a_wide_window_is_filled_rather_than_margined():
+    """Capping the reading column stopped titles and verdicts drifting apart,
+    but left large empty margins. The open job fills them instead, and one
+    media query owns the breakpoint so CSS and JS cannot disagree about it."""
+    html = _html()
+    assert ".panes{" in html.replace(" ", ""), "no two-pane layout"
+    assert "grid-template-columns" in html
+    assert "WIDE" in html, "the breakpoint must be readable from script"
+    # The same breakpoint value in both places, not two that drift.
+    import re
+    widths = set(re.findall(r"min-width:\s*(\d+)px", html))
+    assert len(widths) == 1, f"breakpoint declared at differing widths: {widths}"
+
+
+def test_a_narrow_window_still_gets_the_dialog():
+    """Below the breakpoint there is no room for a pane, so the job has to open
+    as a dialog rather than render into something hidden."""
+    html = _html()
+    assert 'id="detail"' in html and 'role="dialog"' in html
+    assert "paneEmpty" in html, "the pane needs an empty state, not a blank column"
+
+
 def test_the_modal_is_announced_and_takes_focus():
     html = _html()
     assert 'role="dialog"' in html and 'aria-modal="true"' in html
