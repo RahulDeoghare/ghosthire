@@ -111,37 +111,174 @@ def test_hidden_is_defined_locally_not_borrowed_from_the_cdn():
     assert re.search(r"\.hidden\s*\{[^}]*display:\s*none", style)
 
 
-def test_score_bands_survive_a_dead_cdn():
-    """Acceptance item 1 is colour-coded bands. If those came from the CDN,
-    an offline dashboard would lose the encoding entirely."""
+def test_verdict_colours_survive_a_dead_cdn():
+    """The verdict is the one thing colour carries. If those classes came from
+    the CDN, an offline page would lose the encoding entirely — every job would
+    look alike. Class names may change with a redesign; owning them locally
+    must not."""
     style = _html().split("</style>")[0]
-    for band in ("band-real", "band-quest", "band-ghost"):
-        assert f".{band}" in style
+    positive, negative, unknown = [], [], []
+    for line in style.splitlines():
+        name = line.strip().split("{")[0].strip()
+        if not name.startswith("."):
+            continue
+        if "ok" in name or "real" in name:
+            positive.append(name)
+        elif "bad" in name or "ghost" in name:
+            negative.append(name)
+        elif "none" in name or "unknown" in name:
+            unknown.append(name)
+    assert positive, "no locally-defined class for the corroborated verdict"
+    assert negative, "no locally-defined class for the not-found verdict"
+    assert unknown, "no locally-defined class for the unverified verdict"
 
 
-def test_the_detail_view_marks_derived_dates_the_way_the_list_does():
-    """A relative date is accurate to about a week. The leaderboard says so
-    with a tilde; the detail view rendered the same value as a bare date — and
-    the detail view is exactly where someone goes to scrutinise a claim."""
+def test_a_date_is_shown_in_the_form_the_source_used():
+    """51 of 70 listings gave their age in words — "3 weeks ago" — and we
+    stored an ISO date. Rendering that back as a calendar date presents an
+    estimate as a reading; rendering it as a phrase keeps the precision
+    visible in the shape of the value, without needing a symbol to explain it.
+
+    So: a relative source renders relative, an exact source renders a date.
+    """
     html = _html()
-    detail = html[html.index("async function openDetail"):]
-    assert "dateCell(d)" in detail, "detail must reuse the list's date renderer"
-    assert "accurate to about a week" in detail
+    body = html[html.index("function posted("):]
+    body = body[:body.index("\n}")]
+
+    assert '"relative"' in body, "the renderer must branch on how the date was obtained"
+    rel = body[body.index('"relative"'):]
+    assert "ago(" in rel, "a relative source must render as a relative phrase"
+
+    # And the exact branch must render an actual date rather than a phrase.
+    assert "MONTHS[" in body, "an exact source must render as a calendar date"
+    assert "title=" in body, "the imprecision must still be explained on hover"
 
 
-def test_the_page_opens_on_findings_not_on_everything():
-    """Opening with all 70 listings led with the 66 that could not be checked,
-    which reads as a dump rather than a finding. The default is the listings
-    that carry a verdict; the rest stay one click away."""
+def test_no_view_opens_with_dozens_of_rows():
+    """The original page rendered all 70 listings at once, which reads as a
+    dump. Whatever the default filter is, the page must cap what it draws and
+    offer the rest, rather than rendering everything."""
     html = _html()
-    assert 'let FILTER = "checked"' in html
-    assert '["checked",' in html, "a 'checked' filter must exist to default to"
+    import re
+
+    cap = re.search(r"const PAGE\s*=\s*(\d+)", html)
+    assert cap, "no page cap constant"
+    assert 5 <= int(cap.group(1)) <= 30, \
+        f"cap of {cap.group(1)} is not a cap worth having"
+    assert "more" in html.lower(), "capped rows must be reachable"
 
 
-def test_long_lists_are_capped_until_asked():
+def test_the_page_opens_on_jobs_that_have_a_verdict():
+    """Opening on all 70 led with the 66 the product cannot speak to, which
+    reads as a listings dump. The default is the checked jobs; everything else
+    is one chip away and search still covers all of them."""
     html = _html()
-    assert "const PAGE = 25" in html
-    assert "Show ${hidden} more" in html
+    assert 'FILTER = "checked"' in html, "the default view must be the checked jobs"
+    first = html.index('const FILTERS = [')
+    assert '"checked"' in html[first:first + 260], \
+        "the default filter should lead the chip row, not hide at the end"
+
+
+def test_a_wide_window_never_shows_an_empty_pane_on_arrival():
+    """Half the window doing nothing is the problem the pane was added to
+    solve, so the first result opens with it."""
+    html = _html()
+    assert "VISIBLE[0].id" in html
+
+
+def test_the_reader_can_filter_to_each_verdict():
+    """Browsing is the point, so each verdict has to be selectable — including
+    the unverified ones, which must be reachable rather than hidden."""
+    html = _html()
+    assert "unchecked" in html and "confirmed" in html and "ghost" in html
+
+
+# --------------------------------------------------------------------------
+# theming
+# --------------------------------------------------------------------------
+
+def test_both_themes_are_defined_locally():
+    """A theme built out of CDN utility classes disappears with the CDN. Both
+    token sets live in the page's own stylesheet."""
+    style = _html().split("</style>")[0]
+    assert ":root{" in style.replace(" ", "")
+    assert '[data-theme="dark"]' in style
+
+
+def test_the_theme_is_applied_before_the_page_paints():
+    """Reading the preference after render flashes the wrong theme. The
+    applier has to run in <head>, before <body> exists."""
+    html = _html()
+    head = html[:html.index("</head>")]
+    assert "data-theme" in head, "no pre-paint theme applier in <head>"
+    assert "prefers-color-scheme" in head, "the OS preference must be the default"
+
+
+def test_stored_theme_access_is_guarded():
+    """localStorage throws outright in some privacy modes. A theme preference
+    is not worth a blank page."""
+    html = _html()
+    for hit in ("localStorage.getItem", "localStorage.setItem"):
+        i = html.index(hit)
+        assert "try" in html[max(0, i - 200):i], f"{hit} is not inside a try"
+
+
+def test_the_chart_carries_a_palette_for_each_surface():
+    """A dark palette is stepped for its own background, not flipped from the
+    light one — each was validated separately against its surface."""
+    html = _html()
+    assert "color_dark" in html, "the chart must choose per surface"
+    assert "isDark()" in html
+
+
+def test_a_wide_window_is_filled_rather_than_margined():
+    """Capping the reading column stopped titles and verdicts drifting apart,
+    but left large empty margins. The open job fills them instead, and one
+    media query owns the breakpoint so CSS and JS cannot disagree about it."""
+    html = _html()
+    assert ".panes{" in html.replace(" ", ""), "no two-pane layout"
+    assert "grid-template-columns" in html
+    assert "WIDE" in html, "the breakpoint must be readable from script"
+
+    # The stylesheet and the script must name the SAME breakpoint. Table
+    # min-widths are not breakpoints, so only media queries and matchMedia
+    # calls are compared.
+    import re
+    css = set(re.findall(r"@media\s*\(min-width:\s*(\d+)px\)", html))
+    js = set(re.findall(r"matchMedia\(\s*[\"'“]\(min-width:\s*(\d+)px\)", html))
+    assert css, "no media-query breakpoint found"
+    assert js, "script never consults the breakpoint"
+    assert css == js, f"stylesheet says {sorted(css)}, script says {sorted(js)}"
+
+
+def test_a_narrow_window_still_gets_the_dialog():
+    """Below the breakpoint there is no room for a pane, so the job has to open
+    as a dialog rather than render into something hidden."""
+    html = _html()
+    assert 'id="detail"' in html and 'role="dialog"' in html
+    assert "paneEmpty" in html, "the pane needs an empty state, not a blank column"
+
+
+def test_the_type_system_separates_prose_from_data():
+    """Serif for what a person reads as language, sans for the interface, mono
+    for values. A collector ID or a salary is a value, not prose, and setting
+    it in mono says so without needing a label."""
+    style = _html().split("</style>")[0]
+    assert "Source Serif" in style, "no serif for display"
+    assert "Geist Mono" in style, "no mono for data"
+    body = [ln for ln in style.splitlines() if ln.strip().startswith("body{")]
+    assert any("Geist" in ln and "Mono" not in ln for ln in body), \
+        "body text should not be set in the display or data face"
+
+
+def test_fonts_have_a_fallback_stack():
+    """A webfont that fails to load must fall back to something with the same
+    intent, not to whatever the browser picks."""
+    style = _html().split("</style>")[0]
+    serif = [ln for ln in style.splitlines() if "Source Serif" in ln][0]
+    assert "serif" in serif.split("Source Serif")[1], "serif has no generic fallback"
+    mono = [ln for ln in style.splitlines() if "Geist Mono" in ln][0]
+    assert "monospace" in mono, "mono has no generic fallback"
 
 
 def test_the_modal_is_announced_and_takes_focus():
