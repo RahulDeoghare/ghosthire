@@ -187,6 +187,7 @@
 
   <!-- ── how we verify ────────────────────────────────────────────────── -->
   <section id="how" class="column mt-14 pt-10 border-t" style="border-color:var(--line)">
+    <p class="sect-num mb-2">The method</p>
     <h2 class="serif text-2xl">How a job gets verified</h2>
     <p class="muted text-sm mt-2 max-w-3xl">
       We read the job board and, separately, the employer's own careers page, then
@@ -276,7 +277,7 @@ function linkOrText(url, label, cls) {
 
 function isDark(){ return document.documentElement.getAttribute("data-theme") === "dark"; }
 
-let ALL = [], META = null, WHY = {}, FILTER = "all", EXPANDED = false;
+let ALL = [], META = null, WHY = {}, FILTER = "checked", EXPANDED = false;
 // What the current filter and search actually produced, so the detail view can
 // step through the same list the reader is looking at rather than all of it.
 let VISIBLE = [];
@@ -399,10 +400,14 @@ function jobCard(r) {
 }
 
 const FILTERS = [
-  ["all",       "All jobs",             () => true],
+  // Checked leads and is the default: these are the jobs the product has
+  // something to say about. Opening on all 70 led with the 66 it cannot
+  // speak to, which reads as a listings dump rather than a result.
+  ["checked",   "Checked",              r => r.assessed],
   ["ghost",     "Not on careers page",  r => r.assessed && r.ghost_score > 0],
   ["confirmed", "Listed by employer",   r => r.assessed && r.ghost_score === 0],
   ["unchecked", "Unverified",           r => !r.assessed],
+  ["all",       "All jobs",             () => true],
 ];
 
 function matches(r, q) {
@@ -414,7 +419,7 @@ function matches(r, q) {
 function syncUrl() {
   const p = new URLSearchParams();
   if ($("#q").value.trim()) p.set("q", $("#q").value.trim());
-  if (FILTER !== "all") p.set("show", FILTER);
+  if (FILTER !== "checked") p.set("show", FILTER);
   if ($("#company-filter").value) p.set("employer", $("#company-filter").value);
   const qs = p.toString();
   history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
@@ -457,10 +462,9 @@ function render() {
   $("#result-count").innerHTML = !rows.length ? ""
     : filtered
       ? `Showing <strong>${rows.length}</strong> of ${ALL.length} jobs`
-        + (checked ? ` · ${checked} checked` : "")
-      : `<span class="dim">Newest and most-questioned first. Press
-         <kbd class="px-1 py-0.5 rounded text-[11px]"
-           style="background:var(--card);border:1px solid var(--line)">/</kbd> to search.</span>`;
+        + (checked ? ` · ${checked} checked against the employer` : "")
+      : `<strong>${rows.length}</strong> job${rows.length === 1 ? "" : "s"}
+         checked against the employer's own careers page`;
   $("#jobs").innerHTML = rows.length
     ? shown.map(jobCard).join("") + (hidden > 0
       ? `<button id="more" class="w-full card rounded-xl py-3 text-sm muted hover:text-black">
@@ -790,8 +794,12 @@ async function start() {
     }
 
     render();
-    paneEmpty();
+    // On a wide screen an empty pane is half the window doing nothing, so the
+    // first result opens by default. On a narrow one nothing opens, because a
+    // dialog on arrival would be an interruption rather than a view.
     if (INITIAL.get("listing")) openDetail(INITIAL.get("listing"));
+    else if (WIDE() && VISIBLE.length) openDetail(VISIBLE[0].id);
+    else paneEmpty();
 
     // Crossing the breakpoint must move an open job between the pane and the
     // dialog, or it ends up rendered into whichever one is now hidden.

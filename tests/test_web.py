@@ -168,6 +168,24 @@ def test_no_view_opens_with_dozens_of_rows():
     assert "more" in html.lower(), "capped rows must be reachable"
 
 
+def test_the_page_opens_on_jobs_that_have_a_verdict():
+    """Opening on all 70 led with the 66 the product cannot speak to, which
+    reads as a listings dump. The default is the checked jobs; everything else
+    is one chip away and search still covers all of them."""
+    html = _html()
+    assert 'FILTER = "checked"' in html, "the default view must be the checked jobs"
+    first = html.index('const FILTERS = [')
+    assert '"checked"' in html[first:first + 260], \
+        "the default filter should lead the chip row, not hide at the end"
+
+
+def test_a_wide_window_never_shows_an_empty_pane_on_arrival():
+    """Half the window doing nothing is the problem the pane was added to
+    solve, so the first result opens with it."""
+    html = _html()
+    assert "VISIBLE[0].id" in html
+
+
 def test_the_reader_can_filter_to_each_verdict():
     """Browsing is the point, so each verdict has to be selectable — including
     the unverified ones, which must be reachable rather than hidden."""
