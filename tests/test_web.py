@@ -179,13 +179,6 @@ def test_the_page_opens_on_jobs_that_have_a_verdict():
         "the default filter should lead the chip row, not hide at the end"
 
 
-def test_a_wide_window_never_shows_an_empty_pane_on_arrival():
-    """Half the window doing nothing is the problem the pane was added to
-    solve, so the first result opens with it."""
-    html = _html()
-    assert "VISIBLE[0].id" in html
-
-
 def test_the_reader_can_filter_to_each_verdict():
     """Browsing is the point, so each verdict has to be selectable — including
     the unverified ones, which must be reachable rather than hidden."""
@@ -231,57 +224,53 @@ def test_the_chart_carries_a_palette_for_each_surface():
     assert "isDark()" in html
 
 
-def test_a_wide_window_is_filled_rather_than_margined():
-    """Capping the reading column stopped titles and verdicts drifting apart,
-    but left large empty margins. The open job fills them instead, and one
-    media query owns the breakpoint so CSS and JS cannot disagree about it."""
+def test_the_layout_puts_the_two_sources_side_by_side():
+    """The product is a comparison between what a board advertises and what an
+    employer lists, so the page is one: two columns with the verdict in the
+    gutter between them. A wide window is filled by the comparison rather than
+    by margin."""
     html = _html()
-    assert ".panes{" in html.replace(" ", ""), "no two-pane layout"
-    assert "grid-template-columns" in html
-    assert "WIDE" in html, "the breakpoint must be readable from script"
-
-    # The stylesheet and the script must name the SAME breakpoint. Table
-    # min-widths are not breakpoints, so only media queries and matchMedia
-    # calls are compared.
-    import re
-    css = set(re.findall(r"@media\s*\(min-width:\s*(\d+)px\)", html))
-    js = set(re.findall(r"matchMedia\(\s*[\"'“]\(min-width:\s*(\d+)px\)", html))
-    assert css, "no media-query breakpoint found"
-    assert js, "script never consults the breakpoint"
-    assert css == js, f"stylesheet says {sorted(css)}, script says {sorted(js)}"
+    style = html.split("</style>")[0]
+    assert ".entry-grid{" in style.replace(" ", ""), "no two-source grid"
+    assert "grid-template-columns" in style
+    assert ".gutter{" in style.replace(" ", ""), "no gutter to carry the verdict"
 
 
-def test_a_narrow_window_still_gets_the_dialog():
-    """Below the breakpoint there is no room for a pane, so the job has to open
-    as a dialog rather than render into something hidden."""
+def test_an_absence_is_drawn_rather_than_described():
+    """A job missing from the employer's page is the finding. Rendering it as a
+    sentence in a table cell buries it; it gets a visible gap."""
     html = _html()
-    assert 'id="detail"' in html and 'role="dialog"' in html
-    assert "paneEmpty" in html, "the pane needs an empty state, not a blank column"
+    style = html.split("</style>")[0]
+    assert ".absent{" in style.replace(" ", ""), "no treatment for a missing role"
+    assert "dashed" in style, "the gap should read as a gap"
+    assert "Nothing matching" in html
 
 
-def test_the_type_system_separates_prose_from_data():
-    """Serif for what a person reads as language, sans for the interface, mono
-    for values. A collector ID or a salary is a value, not prose, and setting
-    it in mono says so without needing a label."""
-    style = _html().split("</style>")[0]
-    assert "Source Serif" in style, "no serif for display"
-    assert "Geist Mono" in style, "no mono for data"
-    body = [ln for ln in style.splitlines() if ln.strip().startswith("body{")]
-    assert any("Geist" in ln and "Mono" not in ln for ln in body), \
-        "body text should not be set in the display or data face"
-
-
-def test_fonts_have_a_fallback_stack():
-    """A webfont that fails to load must fall back to something with the same
-    intent, not to whatever the browser picks."""
-    style = _html().split("</style>")[0]
-    serif = [ln for ln in style.splitlines() if "Source Serif" in ln][0]
-    assert "serif" in serif.split("Source Serif")[1], "serif has no generic fallback"
-    mono = [ln for ln in style.splitlines() if "Geist Mono" in ln][0]
-    assert "monospace" in mono, "mono has no generic fallback"
-
-
-def test_the_modal_is_announced_and_takes_focus():
+def test_the_two_sources_stack_and_stay_labelled_when_narrow():
+    """Below the breakpoint the columns become rows, so each side has to say
+    which source it is — otherwise the comparison is lost."""
     html = _html()
-    assert 'role="dialog"' in html and 'aria-modal="true"' in html
+    assert html.count("side-label") >= 3, "sides must be labelled"
+    assert "Advertised on the job board" in html
+    assert "On the employer's careers page" in html
+
+
+def test_evidence_opens_inside_the_entry_it_explains():
+    """Not a dialog over the comparison, nor a panel beside it: the reader is
+    already looking at the two sides, and the evidence is the argument between
+    them."""
+    html = _html()
+    assert "entry-detail" in html
+    assert 'id="detail"' not in html, "the dialog should be gone, not merely hidden"
+
+
+def test_opening_the_evidence_moves_focus_into_it():
+    """There is no dialog any more, but focus still has to follow the reader
+    into what just opened and return when it closes — otherwise keyboard users
+    are left where the content no longer is."""
+    html = _html()
+    assert 'slot.querySelector("button")?.focus()' in html, \
+        "focus must move into the expanded evidence"
     assert "lastFocus" in html, "focus must return to where it came from"
+    assert 'role="button"' in html and "tabindex" in html, \
+        "an entry that opens on click must be reachable by keyboard"

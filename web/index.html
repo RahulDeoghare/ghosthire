@@ -75,14 +75,43 @@
   /* Two panes on a wide screen: the list keeps a comfortable measure while the
      open job fills what would otherwise be margin. Below the breakpoint the
      pane is not rendered and the job opens as a dialog instead. */
-  .panes{display:grid;gap:1.25rem;}
-  /* In the pane the detail needs its own surface; inside the dialog the dialog
-     already provides one, so it must not draw a second card inside a card. */
-  #pane .detail-inner{background:var(--card);border:1px solid var(--line);
-                      border-radius:1rem;padding:1.5rem;}
-  @media (min-width:1060px){
-    .panes{grid-template-columns:minmax(0,25rem) minmax(0,1fr);align-items:start;}
-    .pane{position:sticky;top:1rem;max-height:calc(100vh - 2rem);overflow-y:auto;}
+  /* The product is a comparison, so the page is one. Each entry spans two
+     columns — what the board advertises, what the employer lists — with a
+     gutter carrying the verdict between them. An absence is drawn as an
+     absence rather than described in a sentence. */
+  .entry{border-bottom:1px solid var(--line);}
+  .entry:last-child{border-bottom:0;}
+  .entry-grid{display:grid;grid-template-columns:1fr;gap:.5rem;
+              padding:1.35rem 0;align-items:start;}
+  .gutter{display:flex;align-items:center;gap:.6rem;}
+  .gutter::before,.gutter::after{content:"";flex:1;height:1px;background:var(--line);}
+  .side-label{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;
+              color:var(--dim);margin-bottom:.5rem;}
+  .absent{border:1px dashed var(--bad-line);border-radius:.6rem;
+          padding:.9rem 1rem;background:linear-gradient(135deg,
+          transparent 0 6px, var(--bad-bg) 6px 7px, transparent 7px 14px);
+          background-size:14px 14px;}
+  .entry:hover{background:var(--raised);}
+  .entry{transition:background-color .12s ease;}
+  .entry-open{background:var(--raised);}
+  /* The expanded evidence sits inside the entry, so it takes the entry's
+     gutters rather than drawing a second card inside one. */
+  .entry-detail{border-top:1px solid var(--line);margin-top:1.25rem;
+                padding:1.35rem 1.25rem 1.5rem;}
+  .entry-detail .detail-inner{max-width:56rem;}
+
+  @media (min-width:900px){
+    .entry-grid{grid-template-columns:minmax(0,1fr) 5.5rem minmax(0,1fr);
+                gap:0;padding:1.6rem 0;}
+    .gutter{flex-direction:column;justify-content:flex-start;padding-top:1.6rem;}
+    .gutter::before,.gutter::after{width:1px;height:auto;flex:1;}
+    .side-label{margin-bottom:.6rem;}
+  }
+  .ledger-head{display:none;}
+  @media (min-width:900px){
+    .ledger-head{display:grid;grid-template-columns:minmax(0,1fr) 5.5rem minmax(0,1fr);
+                 position:sticky;top:0;z-index:5;background:var(--bg);
+                 border-bottom:1px solid var(--ink);padding:.6rem 0;}
   }
 
   .card{background:var(--card);border:1px solid var(--line);}
@@ -157,32 +186,19 @@
 </header>
 
 <main class="shell py-6">
-  <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-    <p id="result-count" class="text-sm muted"></p>
-    <p class="text-xs dim">Every verdict links the job and the employer's own careers page.</p>
-  </div>
+  <div class="column">
+    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-5">
+      <p id="result-count" class="text-sm muted"></p>
+      <p class="text-xs dim">Open either side to check the claim yourself.</p>
+    </div>
 
-  <div class="panes">
+    <div class="ledger-head">
+      <div class="side-label" style="margin:0">Advertised on the job board</div>
+      <div></div>
+      <div class="side-label" style="margin:0">On the employer's own careers page</div>
+    </div>
 
-  <div id="jobs" class="space-y-2">
-    
-    <!-- skeletons: a blank page during the fetch reads as "no jobs" -->
-    <div class="card rounded-xl p-5 animate-pulse"><div class="flex gap-4">
-      <div class="w-10 h-10 rounded-lg" style="background:var(--line)"></div>
-      <div class="flex-1 space-y-2.5">
-        <div class="h-4 rounded w-1/3" style="background:var(--line)"></div>
-        <div class="h-3 rounded w-1/5" style="background:var(--line2)"></div>
-        <div class="h-3 rounded w-2/5" style="background:var(--line2)"></div></div></div></div>
-    <div class="card rounded-xl p-5 animate-pulse"><div class="flex gap-4">
-      <div class="w-10 h-10 rounded-lg" style="background:var(--line)"></div>
-      <div class="flex-1 space-y-2.5">
-        <div class="h-4 rounded w-2/5" style="background:var(--line)"></div>
-        <div class="h-3 rounded w-1/6" style="background:var(--line2)"></div>
-        <div class="h-3 rounded w-1/3" style="background:var(--line2)"></div></div></div></div>
-  
-  </div>
-
-    <aside id="pane" class="pane hidden"></aside>
+    <div id="jobs"></div>
   </div>
 
   <!-- ── how we verify ────────────────────────────────────────────────── -->
@@ -240,14 +256,6 @@
     explanations. Only public pages are read — nothing behind a login or paywall.
   </div>
 </footer>
-
-<!-- ── job detail ─────────────────────────────────────────────────────── -->
-<div id="detail" role="dialog" aria-modal="true" aria-label="Job detail"
-     class="hidden fixed inset-0 z-30 overflow-y-auto" style="background:rgba(15,22,34,.45)">
-  <div class="max-w-3xl mx-auto my-8 card rounded-2xl shadow-xl">
-    <div id="detail-body" class="p-6"></div>
-  </div>
-</div>
 
 <script>
 const $ = (s, r=document) => r.querySelector(s);
@@ -374,27 +382,58 @@ const PIN = `<svg viewBox="0 0 16 16" class="w-3.5 h-3.5 shrink-0" fill="none" s
 const CLOCK = `<svg viewBox="0 0 16 16" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor"
   stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.2l2 1.2"/></svg>`;
 
+function sideBoard(r) {
+  return `<div>
+    <div class="side-label lg:hidden">Advertised on the job board</div>
+    <h3 class="serif leading-snug text-[17px]">${esc(r.job_title)}</h3>
+    <p class="text-sm muted mt-1">${esc(r.company)}</p>
+    <div class="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 mt-2.5 text-xs muted">
+      ${r.location ? `<span class="inline-flex items-center gap-1.5">${PIN}${esc(r.location)}</span>` : ""}
+      ${r.salary_range ? `<span class="mono text-[11px]" style="color:var(--ink)">${esc(r.salary_range)}</span>` : ""}
+      <span class="inline-flex items-center gap-1.5">${CLOCK}${posted(r)}</span>
+    </div>
+  </div>`;
+}
+
+// The right-hand side is the point. A match is set in the same type as the
+// advert so the two read as a pair; an absence is drawn as a gap rather than
+// described, because the gap IS the finding.
+function sideEmployer(r) {
+  const label = `<div class="side-label lg:hidden">On the employer's careers page</div>`;
+  if (!r.assessed) {
+    const why = WHY_SHORT[WHY[r.company]];
+    return `<div>${label}
+      <div class="rounded-[.6rem] px-4 py-3.5" style="background:var(--none-bg);
+           border:1px solid var(--none-line)">
+        <p class="text-sm muted">Not checked</p>
+        <p class="text-xs dim mt-1">${esc(why || "we did not select a careers page for this employer")}</p>
+      </div></div>`;
+  }
+  if (r.ghost_score === 0) {
+    return `<div>${label}
+      <h3 class="serif leading-snug text-[17px]" style="color:var(--ok)">${esc(r.job_title)}</h3>
+      <p class="text-sm muted mt-1">listed by ${esc(r.company)}</p>
+      <p class="text-xs dim mt-2.5">Found among their open roles.</p>
+    </div>`;
+  }
+  return `<div>${label}
+    <div class="absent">
+      <p class="serif text-[15px]" style="color:var(--bad)">Nothing matching</p>
+      <p class="text-xs muted mt-1.5">Not among ${esc(r.company)}'s open roles.</p>
+    </div></div>`;
+}
+
 function jobCard(r) {
-  const why = !r.assessed && WHY_SHORT[WHY[r.company]];
-  return `<article class="job card rounded-xl px-4 py-3.5 sm:px-5 sm:py-4 cursor-pointer" data-id="${r.id}"
-      tabindex="0" role="button" aria-label="${esc(r.job_title)} at ${esc(r.company)}">
-    <div class="flex gap-4">
-      ${avatar(r.company)}
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
-          <div class="min-w-0">
-            <h3 class="serif leading-snug text-[17px]">${esc(r.job_title)}</h3>
-            <p class="text-sm muted mt-0.5">${esc(r.company)}</p>
-          </div>
-          ${verdictPill(r)}
-        </div>
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2.5 text-xs muted">
-          ${r.location ? `<span class="inline-flex items-center gap-1.5">${PIN}${esc(r.location)}</span>` : ""}
-          ${r.salary_range ? `<span class="mono text-[11px]" style="color:var(--ink)">${esc(r.salary_range)}</span>` : ""}
-          <span class="inline-flex items-center gap-1.5">${CLOCK}${posted(r)}</span>
-        </div>
-        ${why ? `<p class="text-xs dim mt-2.5">Not checked — ${esc(why)}.</p>` : ""}
+  const v = verdict(r);
+  return `<article class="entry" data-id="${r.id}" tabindex="0" role="button"
+      aria-label="${esc(r.job_title)} at ${esc(r.company)} — ${v.label}">
+    <div class="entry-grid">
+      ${sideBoard(r)}
+      <div class="gutter">
+        <span class="pill ${v.cls} inline-flex items-center justify-center
+          w-7 h-7 shrink-0" title="${esc(v.label)}">${v.glyph}</span>
       </div>
+      ${sideEmployer(r)}
     </div>
   </article>`;
 }
@@ -486,7 +525,6 @@ function render() {
 
   document.querySelectorAll("[data-filter]").forEach(b =>
     b.className = `chip pill px-3 py-1.5 text-xs ${b.dataset.filter === FILTER ? "on" : ""}`);
-  if (CURRENT !== null) markSelected(CURRENT);
   syncUrl();
 }
 
@@ -504,13 +542,7 @@ async function openDetail(id) {
   const body = `
     <div class="detail-inner">
     <div class="flex items-start justify-between gap-4">
-      <div class="flex gap-3.5 min-w-0">
-        ${avatar(d.company)}
-        <div class="min-w-0">
-          <h2 class="serif text-xl leading-snug">${esc(d.job_title)}</h2>
-          <p class="muted text-sm mt-0.5">${esc(d.company)}${d.location ? " · " + esc(d.location) : ""}</p>
-        </div>
-      </div>
+      <p class="sect-num" style="margin-top:.35rem">The evidence</p>
       <div class="flex items-center gap-1 shrink-0">
         <button onclick="step(-1)" aria-label="Previous job" title="Previous (←)"
           class="w-8 h-8 rounded-lg muted hover:text-black" style="border:1px solid var(--line)">‹</button>
@@ -521,13 +553,7 @@ async function openDetail(id) {
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-2 mt-4">
-      ${verdictPill(d)}
-      ${d.salary_range ? `<span class="pill chip mono text-[11px] px-2.5 py-1">${esc(d.salary_range)}</span>` : ""}
-      <span class="pill chip text-xs px-2.5 py-1">${posted(d)}</span>
-    </div>
-
-    <div class="mt-5 rounded-xl p-4" style="background:var(--bg)">
+    <div class="mt-4 rounded-xl p-4" style="background:var(--bg);border:1px solid var(--line)">
       ${d.assessed
         ? (m
           ? `<p class="font-medium" style="color:var(--ok)">This job is listed on ${esc(d.company)}'s own careers page.</p>
@@ -578,38 +604,28 @@ async function openDetail(id) {
 
   // Tailwind's lg: and the pane's own media query would have to agree forever;
   // one source of truth is cheaper.
-  if (WIDE()) {
-    $("#pane").innerHTML = body;
-    $("#pane").classList.remove("hidden");
-    markSelected(id);
-  } else {
-    $("#detail-body").innerHTML = body;
-    $("#detail").classList.remove("hidden");
-    const btn = $("#detail-body button"); if (btn) btn.focus();
-  }
+  // The evidence belongs under the comparison it explains, not beside it or
+  // over it — the reader is already looking at the two sides, and the detail
+  // is the argument between them.
+  const entry = document.querySelector(`article[data-id="${CSS.escape(String(id))}"]`);
+  if (!entry) return;
+  document.querySelectorAll(".entry-open").forEach(el => {
+    if (el !== entry) { el.classList.remove("entry-open");
+                        el.querySelector(".entry-detail")?.remove(); }
+  });
+  entry.querySelector(".entry-detail")?.remove();
+  const slot = document.createElement("div");
+  slot.className = "entry-detail pb-6";
+  slot.innerHTML = body;
+  entry.appendChild(slot);
+  entry.classList.add("entry-open");
+  slot.querySelector("button")?.focus();
+
   const p = new URLSearchParams(location.search); p.set("listing", id);
   history.replaceState(null, "", `?${p}`);
 }
 
-const WIDE = () => matchMedia("(min-width:1060px)").matches;
 
-function markSelected(id) {
-  document.querySelectorAll("article[data-id]").forEach(el => {
-    const on = String(el.dataset.id) === String(id);
-    el.style.borderColor = on ? "var(--accent)" : "";
-    el.style.background = on ? "var(--raised)" : "";
-  });
-}
-
-function paneEmpty() {
-  if (!WIDE()) { $("#pane").classList.add("hidden"); return; }
-  $("#pane").classList.remove("hidden");
-  $("#pane").innerHTML = `<div class="card rounded-2xl p-8 text-center">
-    <p class="font-medium">Pick a job to see the evidence</p>
-    <p class="muted text-sm mt-1.5 max-w-xs mx-auto">Each one shows the advert and the
-      employer's own careers page side by side, so you can judge it yourself.</p>
-  </div>`;
-}
 
 function step(delta) {
   const i = VISIBLE.findIndex(r => String(r.id) === String(CURRENT));
@@ -619,20 +635,18 @@ function step(delta) {
 }
 
 function closeDetail(){
-  $("#detail").classList.add("hidden");
+  document.querySelectorAll(".entry-open").forEach(el => {
+    el.classList.remove("entry-open");
+    el.querySelector(".entry-detail")?.remove();
+  });
   CURRENT = null;
-  markSelected(null);
-  paneEmpty();
   const p = new URLSearchParams(location.search); p.delete("listing");
   history.replaceState(null, "", p.toString() ? `?${p}` : location.pathname);
   if (lastFocus?.focus) lastFocus.focus();
   lastFocus = null;
 }
-$("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeDetail(); });
 document.addEventListener("keydown", e => {
-  const open = CURRENT !== null;
-  const dialog = !$("#detail").classList.contains("hidden");
-  if (!open && !dialog) return;
+  if (CURRENT === null) return;
   if (e.key === "Escape") closeDetail();
   if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
   if (e.key === "ArrowRight") step(1);
@@ -777,8 +791,7 @@ async function start() {
 
     // "/" focuses search, the way every list-and-search tool behaves.
     document.addEventListener("keydown", e => {
-      if (e.key === "/" && document.activeElement !== $("#q")
-          && $("#detail").classList.contains("hidden")) {
+      if (e.key === "/" && document.activeElement !== $("#q")) {
         e.preventDefault(); $("#q").focus();
       }
     });
@@ -798,15 +811,6 @@ async function start() {
     // first result opens by default. On a narrow one nothing opens, because a
     // dialog on arrival would be an interruption rather than a view.
     if (INITIAL.get("listing")) openDetail(INITIAL.get("listing"));
-    else if (WIDE() && VISIBLE.length) openDetail(VISIBLE[0].id);
-    else paneEmpty();
-
-    // Crossing the breakpoint must move an open job between the pane and the
-    // dialog, or it ends up rendered into whichever one is now hidden.
-    matchMedia("(min-width:1060px)").addEventListener("change", () => {
-      if (CURRENT !== null) { $("#detail").classList.add("hidden"); openDetail(CURRENT); }
-      else paneEmpty();
-    });
     loadCoverage(); loadCollectors(); loadHeal();
   } catch (err) {
     $("#jobs").innerHTML = `<div class="card rounded-xl p-6">
