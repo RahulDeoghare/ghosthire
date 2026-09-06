@@ -84,8 +84,16 @@
      gutter is a variable because the open-row band has to bleed back out by
      exactly the amount the shell padded in. */
   :root{--gutter:clamp(1.25rem,3.5vw,4rem);}
-  .shell{max-width:none;margin-inline:auto;padding-inline:var(--gutter);}
-  @media (min-width:2000px){.shell{max-width:120rem;}}
+  .shell{max-width:100rem;margin-inline:auto;padding-inline:var(--gutter);}
+
+  /* Something to look at while the first fetch is in flight. The page used to
+     render its chrome and then pop the rows in, which reads as a glitch; these
+     are the same row geometry, so nothing moves when the real rows replace
+     them. */
+  .skel{background:var(--line2);border-radius:3px;height:.7rem;
+        animation:pulse 1.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.skel{animation:none;}}
 
   /* Hover and focus states have to work on both surfaces. Tailwind's
      `hover:text-black` is literally black, which on the dark theme hides the
@@ -119,6 +127,10 @@
   .marker::before,.marker::after{content:"";flex:1;height:1px;background:var(--line2);}
   .marker b{font-weight:400;color:var(--accent);}
   .marker em{font-style:normal;color:var(--ink);}
+  /* One spacing step between major sections, so the page has a beat instead of
+     whatever each block happened to be given. Declared after `.marker`, whose
+     `margin:0` otherwise wins on source order and flattens the gap. */
+  .section-gap{margin-top:5rem;}
 
   /* Underline set in the two verdict colours, so the word it sits under is
      literally underwritten by the thing the product measures. */
@@ -162,26 +174,34 @@
                 transparent 6px 12px);background-size:12px 12px;}
   .schema .unread{border:1px solid var(--none-line);border-radius:4px;height:2.4rem;
                   background:var(--none-bg);}
-  /* Two panes on a wide screen: the list keeps a comfortable measure while the
-     open job fills what would otherwise be margin. Below the breakpoint the
-     pane is not rendered and the job opens as a dialog instead. */
   /* The product is a comparison, so the page is one. Each entry spans two
      columns — what the board advertises, what the employer lists — with a
      gutter carrying the verdict between them. An absence is drawn as an
-     absence rather than described in a sentence. */
+     absence rather than described in a sentence.
+
+     Each side caps its own measure. Letting the columns take half the window
+     each put a job title and its answer 600px apart with 250px of nothing in
+     between, so the row read as three unrelated columns instead of one
+     comparison. The columns still divide the width; only the content inside
+     them stops stretching. */
   .entry{border-bottom:1px solid var(--line2);}
   .entry:last-child{border-bottom:0;}
   .entry-grid{display:grid;grid-template-columns:1fr;gap:.5rem;
               padding:1.35rem 0;align-items:start;}
+  .entry-grid > div{max-width:38rem;}
   .gutter{display:flex;align-items:center;gap:.6rem;}
-  .gutter::before,.gutter::after{content:"";flex:1;height:1px;background:var(--line);}
+  .gutter::before,.gutter::after{content:"";flex:1;height:1px;background:var(--line2);}
   .side-label{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
               font-size:.625rem;letter-spacing:.07em;text-transform:uppercase;
               color:var(--dim);margin-bottom:.5rem;}
-  .absent{border:1px dashed var(--bad-line);border-radius:6px;
-          padding:.9rem 1rem;background:linear-gradient(135deg,
-          transparent 0 6px, var(--bad-bg) 6px 7px, transparent 7px 14px);
-          background-size:14px 14px;}
+  /* The absence is the finding, but three of these stacked as full-width
+     hatched slabs shouted louder than the verdicts they belong to. Same idea,
+     a third of the ink: a finer hatch, one accent edge instead of four dashed
+     ones, and no more width than the sentence inside it needs. */
+  .absent{border:1px dashed var(--bad-line);border-left:2px solid var(--bad);
+          border-radius:0 6px 6px 0;padding:.7rem .9rem;max-width:26rem;
+          background:repeating-linear-gradient(135deg,transparent 0 7px,
+                     var(--bad-bg) 7px 8px);}
   /* The highlight is a band across the page, not a rectangle floating inside
      it. Painted on the entry's own background it stopped at the shell padding,
      which left a hard grey edge with a strip of page showing past it on both
@@ -213,7 +233,7 @@
      — the same two sides, one level deeper. */
   .detail-grid{display:grid;grid-template-columns:1fr;gap:.75rem;}
   @media (min-width:900px){
-    .detail-grid{grid-template-columns:minmax(0,1fr) 5.5rem minmax(0,1fr);gap:0;}
+    .detail-grid{grid-template-columns:minmax(0,30rem) 5.5rem minmax(0,1fr);gap:0;}
     .detail-grid>:nth-child(1){grid-column:1;}
     .detail-grid>:nth-child(2){grid-column:3;}
   }
@@ -238,7 +258,12 @@
   details[open] > .disclose::before{transform:rotate(90deg);}
 
   @media (min-width:900px){
-    .entry-grid{grid-template-columns:minmax(0,1fr) 5.5rem minmax(0,1fr);
+    /* The board side takes a measure, not half the window. Two equal halves
+       put the job title and the answer to it ~600px apart with 240px of air
+       between the title and the verdict, which is what made the row read as
+       three unrelated columns. Capping the first column pulls the pivot back
+       against the thing it is judging. */
+    .entry-grid{grid-template-columns:minmax(0,30rem) 5.5rem minmax(0,1fr);
                 gap:0;padding:1.6rem 0;}
     .gutter{flex-direction:column;justify-content:flex-start;padding-top:1.6rem;}
     .gutter::before,.gutter::after{width:1px;height:auto;flex:1;}
@@ -251,7 +276,7 @@
      heads and the rows are both laid out inside `.shell`. */
   .ledger-head{display:none;}
   @media (min-width:900px){
-    .ledger-head{display:grid;grid-template-columns:minmax(0,1fr) 5.5rem minmax(0,1fr);
+    .ledger-head{display:grid;grid-template-columns:minmax(0,30rem) 5.5rem minmax(0,1fr);
                  border-top:1px solid var(--line2);margin-top:.75rem;padding-top:.6rem;}
   }
   /* Below the breakpoint the columns become rows, so each side names its own
@@ -467,7 +492,7 @@
 </section>
 
   <!-- ── how we verify ────────────────────────────────────────────────── -->
-  <section id="how" class="shell mt-16 pt-2">
+  <section id="how" class="shell section-gap">
     <p class="marker label mb-8"><span><b>02</b> / <em>The method</em></span></p>
     <h2 class="display text-[1.75rem]">How a job gets verified</h2>
     <p class="muted text-sm mt-3 max-w-3xl">
@@ -496,11 +521,11 @@
       </div>
     </div>
 
-    <p id="coverage" class="marker label mt-16 mb-8"><span><b>03</b> / <em>Coverage</em></span></p>
+    <p id="coverage" class="marker label section-gap mb-8"><span><b>03</b> / <em>Coverage</em></span></p>
     <figure id="coverage-fig"></figure>
     <div id="companies" class="mt-6"></div>
 
-    <p id="sources" class="marker label mt-16 mb-8"><span><b>04</b> / <em>Sources</em></span></p>
+    <p id="sources" class="marker label section-gap mb-8"><span><b>04</b> / <em>Sources</em></span></p>
     <details class="card p-4">
       <summary class="disclose font-medium hover-ink">Where the data comes from</summary>
       <div class="mt-4">
@@ -517,10 +542,40 @@
   </section>
 </main>
 
-<footer class="border-t mt-10" style="border-color:var(--line)">
-  <div class="shell py-6 text-xs dim">
-    Evidence worth checking, not proof. A job missing from a careers page has innocent
-    explanations. Only public pages are read — nothing behind a login or paywall.
+<footer class="border-t section-gap" style="border-color:var(--line)">
+  <div class="shell py-10 grid gap-8 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+    <div>
+      <div class="flex items-center gap-2.5">
+        <span class="w-7 h-7 rounded-[4px] flex items-center justify-center text-[13px] font-bold"
+              style="background:var(--accent);color:#fff">G</span>
+        <span class="display text-[15px]">GhostHire</span>
+      </div>
+      <p class="muted text-sm mt-3 max-w-md">
+        Evidence worth checking, not proof. A job missing from a careers page has innocent
+        explanations — a page can lag, or move. Open both links and judge for yourself.
+      </p>
+    </div>
+    <div>
+      <p class="label mb-3">On this page</p>
+      <ul class="space-y-2 text-sm">
+        <li><a href="#listings" class="hover-ink">The listings</a></li>
+        <li><a href="#how" class="hover-ink">How a job gets verified</a></li>
+        <li><a href="#coverage" class="hover-ink">Coverage</a></li>
+        <li><a href="#sources" class="hover-ink">Where the data comes from</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="label mb-3">Scope</p>
+      <ul class="space-y-2 text-sm muted">
+        <li>Public pages only</li>
+        <li>Nothing behind a login</li>
+        <li>Archived before it is read</li>
+      </ul>
+    </div>
+  </div>
+  <div class="shell pb-8">
+    <p class="label pt-6 border-t" style="border-color:var(--line2)">
+      A verdict here is a question, not an accusation</p>
   </div>
 </footer>
 
@@ -560,6 +615,19 @@ const PAGE = 20;
 const INITIAL = new URLSearchParams(location.search);
 
 async function api(p){ const r = await fetch(p); if(!r.ok) throw new Error(`${p} → ${r.status}`); return r.json(); }
+
+// Placeholder rows in the real row geometry, so the list does not pop into
+// existence and nothing shifts when the data lands on top of them.
+function skeleton(n = 5) {
+  const bar = w => `<div class="skel" style="width:${w}"></div>`;
+  return Array.from({length: n}, () => `<div class="entry">
+    <div class="entry-grid">
+      <div>${bar("46%")}<div class="mt-2.5">${bar("22%")}</div>
+           <div class="mt-3">${bar("34%")}</div></div>
+      <div class="gutter"><span class="skel" style="width:1.75rem;height:1.75rem"></span></div>
+      <div>${bar("38%")}<div class="mt-2.5">${bar("28%")}</div></div>
+    </div></div>`).join("");
+}
 
 // ── verdict, in the reader's language rather than the schema's ──────────
 // A glyph as well as a colour: colour alone fails for a colour-blind reader,
@@ -632,7 +700,7 @@ const CLOCK = `<svg viewBox="0 0 16 16" class="w-3.5 h-3.5 shrink-0" fill="none"
 function sideBoard(r) {
   return `<div>
     <div class="side-label narrow-only">Advertised on the job board</div>
-    <h3 class="display leading-snug text-[17px]">${esc(r.job_title)}</h3>
+    <h3 class="display leading-snug text-[1.0625rem]">${esc(r.job_title)}</h3>
     <p class="text-sm muted mt-1">${esc(r.company)}</p>
     <div class="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 mt-2.5 text-xs muted">
       ${r.location ? `<span class="inline-flex items-center gap-1.5">${PIN}${esc(r.location)}</span>` : ""}
@@ -964,7 +1032,8 @@ async function loadCoverage() {
   if (!d.segments.length) return;
   const bar = d.segments.map((s, i) => `
     <div class="relative group" style="width:${(s.count / d.total) * 100}%;${i ? "margin-left:2px;" : ""}">
-      <div style="background:${isDark() ? s.color_dark : s.color};height:30px;border-radius:${
+      <div style="background:${isDark() ? s.color_dark : s.color};height:30px;
+        box-shadow:inset 0 0 0 1px rgba(4,20,37,.10);border-radius:${
         i === 0 ? "6px 0 0 6px" : i === d.segments.length - 1 ? "0 6px 6px 0" : "0"};"></div>
       <div class="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-9 z-10 opacity-0
         group-hover:opacity-100 transition card rounded px-2 py-1 text-xs whitespace-nowrap shadow">
@@ -1074,6 +1143,7 @@ function setTheme(dark){
 }
 
 async function start() {
+  $("#jobs").innerHTML = skeleton();
   try {
     ALL = await api("/api/listings?limit=500");
     await loadCompanies();

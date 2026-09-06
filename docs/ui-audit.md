@@ -79,6 +79,22 @@ rather than closing, and clicks inside the panel are still the panel's.
 attribute that comes and goes. The panel inside takes the cursor back, because
 the panel is not a control.
 
+## Third pass — the things that made it look unfinished
+
+Not defects; judgement calls that were wrong. Recorded because "all the bugs
+are fixed" and "it looks finished" turned out to be very different claims.
+
+| # | Problem | Change |
+|---|---|---|
+| 30 | The coverage chart was a blue/green/amber/pink candy bar on a slate-and-orange-red page, and its orange collided with the accent | one ramp instead of five identities: the verified share in the verdict green, the four reasons in near-neutral slate. Validated on adjacent-pair lightness (all >= 12 L\*) rather than by eye |
+| 31 | The largest segment, 52 jobs, dissolved into the page — it read as an empty track | the pale end of each ramp is held back from the surface colour, and every segment carries a hairline so its outer edge survives |
+| 32 | Rows read as three unrelated columns: a title, then 240px of air, then a pill, then a slab | the board side takes a 30rem measure instead of half the window, which pulls the verdict back against the thing it is judging |
+| 33 | Three full-width hatched slabs shouted louder than the verdicts they belonged to | same idea at a third of the ink — finer hatch, one accent edge instead of four dashed ones, and no wider than its sentence |
+| 34 | Sections were spaced by whatever each block happened to be given | one `.section-gap` step. It has to be declared *after* `.marker`, whose `margin:0` otherwise wins on source order |
+| 35 | The list popped into existence after the first fetch | skeleton rows in the real row geometry, so nothing shifts when the data lands |
+| 36 | The footer was one loose line of small print | three columns: what the page is, what is on it, and the scope rules |
+| 37 | Nothing capped the page, so a wide monitor stretched every row | `max-width:100rem`, which is inert at laptop widths |
+
 ## Dead code
 
 | # | Item | Status |

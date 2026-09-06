@@ -382,18 +382,35 @@ def companies() -> list[dict[str, Any]]:
     return sorted(out, key=lambda r: (-r["listings"], r["company"] or ""))
 
 
-# Categorical hues in fixed order. Two sets, because a dark palette is chosen
-# for its surface rather than flipped from the light one: each was validated
-# separately — light worst-adjacent CVD ΔE 9.1 on #ffffff, dark ΔE 8.4 on
-# #0e1015, both clear of the floor. Coverage reasons are identities, so they
-# get a categorical system of their own; the verdict colours are a status
-# palette and must not share hues with it.
+# One ramp, not five identities. The reasons are not five unrelated things: they
+# are degrees of the same fact — how far out of reach the employer's own listing
+# was — so they read as a sequence in near-neutral slate, and the one segment
+# that is genuinely different in kind, the share we could actually verify, is
+# the only one carrying chroma. It takes the green of the "listed by employer"
+# verdict, because it counts the same jobs.
+#
+# The previous five-hue categorical set (blue/orange/green/amber/pink) was
+# validated on its own terms but predates the slate-and-orange-red palette; on
+# that page it read as a candy bar, and its orange collided with the accent.
+#
+# Two sets, because a dark palette is chosen for its surface rather than flipped
+# from the light one. Validated on adjacent-pair lightness rather than by eye:
+# every neighbouring pair is >= 17 L* apart (floor 12) on #ffffff and on the
+# dark card #0f141c, and the four slate steps sit at chroma 7-15, which keeps
+# them separable under every common form of colour blindness — only the verified
+# segment is saturated, and it is the one that must never be missed.
+#
+# The pale end is held back from the page colour on purpose: "no careers page
+# identified" is the largest slice, and at #cbd5e1 it dissolved into the light
+# surface, reading as an empty track rather than as 52 jobs. The renderer also
+# draws a hairline on every segment so the outer edge survives whatever the
+# surface is.
 COVERAGE_SLOTS = [
-    ("verified",     "Verified against the careers page",       "#2a78d6", "#3987e5"),
-    ("unreadable",   "Careers page uses an ATS we cannot read", "#eb6834", "#d95926"),
-    ("js_portal",    "Bespoke client-side portal",              "#1baf7a", "#199e70"),
-    ("out_of_scope", "Out of scope by rule",                    "#eda100", "#c98500"),
-    ("unidentified", "No careers page identified",              "#e87ba4", "#d55181"),
+    ("verified",     "Verified against the careers page",       "#047857", "#10b981"),
+    ("unreadable",   "Careers page uses an ATS we cannot read", "#2f3d4f", "#c3cede"),
+    ("js_portal",    "Bespoke client-side portal",              "#5b6b80", "#8e9cb0"),
+    ("out_of_scope", "Out of scope by rule",                    "#8b99aa", "#6d7c93"),
+    ("unidentified", "No careers page identified",              "#b3bfcd", "#4a5769"),
 ]
 
 
