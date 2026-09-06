@@ -4,9 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GhostHire — jobs, verified against the employer</title>
+<!-- The mark as an inline data URI rather than a file: this page is served by
+     the API from a single HTML document, and a favicon route is one more thing
+     that can 404 in a deployment. SVG scales to whatever size the browser
+     asks for, so there is no 16/32 pair to keep in sync. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%23ce3500'/%3E%3Cpath%20d='M8.6%2026.4V15a7.4%207.4%200%200114.8%200v11.4l-3.7-3.4-3.7%203.4-3.7-3.4z'%20fill='%23fff'/%3E%3Crect%20x='12.4'%20y='13.4'%20width='2.5'%20height='3.6'%20rx='1.25'%20fill='%23ce3500'/%3E%3Crect%20x='17.1'%20y='13.4'%20width='2.5'%20height='3.6'%20rx='1.25'%20fill='%23ce3500'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#ce3500">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   // Applied before first paint: reading the preference after render makes the
@@ -27,109 +33,427 @@
      borrowed from the CDN, so a dead CDN cannot flatten a verdict colour or
      strand an open dialog. */
   :root{
-    --bg:#fbfaf8;   --card:#ffffff; --raised:#f4f1ec;
-    --line:#e2ddd6; --line2:#eeeae4;
-    --ink:#1a1714;  --muted:#6b635b; --dim:#8f867c;
-    --accent:#8c1d18;
-    --ok:#0f766e;   --ok-bg:#e8f4f2;  --ok-line:#bfdedb;
-    --bad:#8c1d18;  --bad-bg:#f9ecea;  --bad-line:#e8cdc9;
-    --warn:#9a6a15; --warn-bg:#f9f1e2; --warn-line:#e8d7b4;
-    --none:#6b635b; --none-bg:#f1eeea; --none-line:#e2ddd6;
-    --shadow:0 1px 2px rgba(26,23,20,.05), 0 8px 24px rgba(26,23,20,.06);
-    --ring:#d8bfbc;
+    --bg:#f8fafc;   --card:#ffffff; --raised:#eef2f6;
+    --line:#c9d0d8; --line2:#e3e8ed;
+    --ink:#041425;  --muted:#303e4d; --dim:#687282;
+    --accent:#ce3500;
+    --ok:#047857;   --ok-bg:#e6f4ef;  --ok-line:#b9ddcd;
+    --bad:#ce3500;  --bad-bg:#fdeee9; --bad-line:#f2ccbc;
+    --warn:#a16207; --warn-bg:#fbf3e3; --warn-line:#ecd9ae;
+    --none:#687282; --none-bg:#eef1f5; --none-line:#d7dde4;
+    --ring:#f0b49c;
+    --wash:radial-gradient(72rem 26rem at 18% -6rem, #fdece4 0%, transparent 62%);
   }
   :root[data-theme="dark"]{
-    --bg:#14110f;   --card:#1c1916; --raised:#231f1b;
-    --line:#2e2a26; --line2:#26221e;
-    --ink:#f0ede8;  --muted:#a39a90; --dim:#7d746a;
-    --accent:#e0685f;
-    --ok:#2dd4bf;   --ok-bg:#122b28;  --ok-line:#1e4a45;
-    --bad:#e0685f;  --bad-bg:#2c1a18;  --bad-line:#573330;
-    --warn:#c99328; --warn-bg:#2a2114; --warn-line:#544224;
-    --none:#a39a90; --none-bg:#221e1a; --none-line:#332e29;
-    --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 26px rgba(0,0,0,.4);
-    --ring:#5a3a36;
+    --bg:#080b11;   --card:#0f141c; --raised:#161d27;
+    --line:#242c38; --line2:#1a212b;
+    --ink:#eef2f7;  --muted:#a3aebc; --dim:#6f7b8a;
+    --accent:#ff7a4d;
+    --ok:#34d399;   --ok-bg:#0b2620;  --ok-line:#18463a;
+    --bad:#ff7a4d;  --bad-bg:#241310; --bad-line:#4d2519;
+    --warn:#d8a13a; --warn-bg:#241d0e; --warn-line:#4a3c1c;
+    --none:#8d98a7; --none-bg:#151b24; --none-line:#242c38;
+    --ring:#5c2f1d;
+    --wash:radial-gradient(72rem 26rem at 18% -6rem, #1d1109 0%, transparent 62%);
   }
 
-  /* Serif for the things a person reads as language, sans for the interface,
-     mono for the things that are data — a collector ID or a salary is a value,
-     not prose, and setting it in mono says so without a label. */
-  body{font-family:"Geist","Geist Fallback",ui-sans-serif,system-ui,sans-serif;}
-  h1,h2,h3,.serif{font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
-                  font-weight:600;letter-spacing:-.01em;}
-  .mono,kbd,code{font-family:"Geist Mono","Geist Mono Fallback",ui-monospace,
-                 SFMono-Regular,Menlo,monospace;}
+  /* Two typefaces doing two jobs. Inter carries everything a person reads as
+     language, tightened hard at display sizes so a headline reads as one
+     object rather than a row of words. Geist Mono carries everything that is
+     a value or a label — a count, a collector ID, a section name — set small
+     and uppercase, which is what tells the eye it is machinery and not prose. */
+  body{font-family:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;}
+  h1,h2,h3,.display{font-weight:600;letter-spacing:-.03em;line-height:1.1;}
+  .mono,kbd,code{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;}
+  /* One label style, used everywhere a thing needs naming without being read
+     as a sentence: nav, column heads, eyebrows, stat captions. */
+  .label{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+         text-transform:uppercase;letter-spacing:.07em;font-size:.6875rem;
+         line-height:1.35;color:var(--dim);}
 
+  /* The horizontal clamp lives on <html> alone. Putting `overflow-x:hidden` on
+     <body> as well makes the body a scroll container, and a `position:sticky`
+     child of a container that never scrolls simply does not stick — which is
+     what killed the masthead and the filter bar. */
   html{overflow-x:hidden;}
-  body{background:var(--bg);color:var(--ink);max-width:100vw;overflow-x:hidden;
+  body{background:var(--bg);color:var(--ink);
        font-feature-settings:"tnum","cv02";
        transition:background-color .15s ease,color .15s ease;}
   .hidden{display:none !important;}
 
-  /* Proportion: the page was one wide column stretched to the viewport, which
-     left a job title and its verdict marooned at opposite edges. The reading
-     column is capped near 60rem and the shell sits wider, so a large window
-     gets margin instead of stretched rows. */
-  .shell{max-width:84rem;margin-inline:auto;padding-inline:1.25rem;}
-  .column{max-width:60rem;margin-inline:auto;}
-  /* Two panes on a wide screen: the list keeps a comfortable measure while the
-     open job fills what would otherwise be margin. Below the breakpoint the
-     pane is not rendered and the job opens as a dialog instead. */
-  .panes{display:grid;gap:1.25rem;}
-  /* In the pane the detail needs its own surface; inside the dialog the dialog
-     already provides one, so it must not draw a second card inside a card. */
-  #pane .detail-inner{background:var(--card);border:1px solid var(--line);
-                      border-radius:1rem;padding:1.5rem;}
-  @media (min-width:1060px){
-    .panes{grid-template-columns:minmax(0,25rem) minmax(0,1fr);align-items:start;}
-    .pane{position:sticky;top:1rem;max-height:calc(100vh - 2rem);overflow-y:auto;}
+  /* Anchors land below the masthead rather than under it. */
+  [id]{scroll-margin-top:4.5rem;}
+
+  /* Full width with a gutter that grows with the window, capped only where a
+     line of text would otherwise run past reading length. A laptop should get
+     a page, not a tablet-width column parked in the middle of the screen. The
+     gutter is a variable because the open-row band has to bleed back out by
+     exactly the amount the shell padded in. */
+  :root{--gutter:clamp(1.25rem,3.5vw,4rem);}
+  .shell{max-width:100rem;margin-inline:auto;padding-inline:var(--gutter);}
+
+  /* Something to look at while the first fetch is in flight. The page used to
+     render its chrome and then pop the rows in, which reads as a glitch; these
+     are the same row geometry, so nothing moves when the real rows replace
+     them. */
+  .skel{background:var(--line2);border-radius:3px;height:.7rem;
+        animation:pulse 1.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.skel{animation:none;}}
+
+  /* Hover and focus states have to work on both surfaces. Tailwind's
+     `hover:text-black` is literally black, which on the dark theme hides the
+     control it is meant to highlight. */
+  .hover-ink{color:var(--muted);transition:color .12s ease;}
+  .hover-ink:hover{color:var(--ink);}
+
+  /* A bordered strip of mono labels, divided by hairlines — the reference's
+     signature and, here, an honest one: each cell is a claim about what this
+     page is, and the last one is the caveat. */
+  .eyebrow{display:inline-flex;flex-wrap:wrap;align-items:stretch;
+           border:1px solid var(--line);border-radius:6px;background:var(--card);
+           overflow:hidden;}
+  .eyebrow>span{padding:.5rem .75rem;border-top:1px solid var(--line);}
+  .eyebrow>span:first-child{border-top:0;}
+  .eyebrow>span.hot{color:var(--accent);background:var(--bad-bg);}
+  /* Wrapped, the cells are rows and the divider belongs on top; side by side
+     it belongs on the left. Splitting it by breakpoint rather than letting
+     flex-wrap carry a left border into the middle of a new row. */
+  @media (min-width:560px){
+    .eyebrow{flex-wrap:nowrap;}
+    .eyebrow>span{border-top:0;border-left:1px solid var(--line);}
+    .eyebrow>span:first-child{border-left:0;}
+  }
+  @media (max-width:559px){.eyebrow{display:flex;width:100%;flex-direction:column;}}
+
+  /* The section rule: a number in the accent, a name in ink, both mono, laid
+     on a hairline that runs the width of the page. It is how the reference
+     paces a long page, and this page is long. */
+  .marker{display:flex;align-items:center;gap:.9rem;margin:0;}
+  .marker::before,.marker::after{content:"";flex:1;height:1px;background:var(--line2);}
+  .marker b{font-weight:400;color:var(--accent);}
+  .marker em{font-style:normal;color:var(--ink);}
+  /* One spacing step between major sections, so the page has a beat instead of
+     whatever each block happened to be given. Declared after `.marker`, whose
+     `margin:0` otherwise wins on source order and flattens the gap. */
+  .section-gap{margin-top:5rem;}
+
+  /* Underline set in the two verdict colours, so the word it sits under is
+     literally underwritten by the thing the product measures. */
+  .ul{position:relative;white-space:nowrap;}
+  .ul::after{content:"";position:absolute;left:0;right:0;bottom:-.12em;height:4px;
+             border-radius:2px;
+             background:linear-gradient(90deg,var(--accent) 0 50%,var(--ok) 50% 100%);}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+       border-radius:4px;border:1px solid var(--line);background:var(--card);
+       color:var(--ink);font-size:.875rem;font-weight:500;padding:.5rem .85rem;
+       white-space:nowrap;transition:background-color .12s ease,border-color .12s ease;}
+  .btn:hover{background:var(--raised);}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent);filter:brightness(1.08);}
+  .btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
+  /* `.hidden` is defined above with !important so a dead CDN cannot strand an
+     open dialog — which also means Tailwind's `hidden md:flex` can never turn
+     anything back on. Anything that appears only on a wide screen says so in
+     its own rule rather than borrowing that pair. */
+  .wide-only{display:none;}
+  @media (min-width:900px){.wide-only{display:flex;}}
+  .sm-only{display:none;}
+  @media (min-width:640px){.sm-only{display:inline-flex;}}
+  .lg-only{display:none;}
+  @media (min-width:1024px){.lg-only{display:block;}}
+
+  /* The hero's right-hand half. The reference fills it with a picture of the
+     thing it is selling; the thing this page is selling is a comparison, so
+     the picture is one — schematic on purpose, with no titles or employers in
+     it, because a plausible-looking fake listing beside real verdicts is the
+     one thing this product must never draw. */
+  .schema{display:grid;grid-template-columns:minmax(0,1fr) 2.75rem minmax(0,1fr);
+          align-items:center;padding:1rem;border-top:1px solid var(--line2);}
+  .schema:first-of-type{border-top:0;}
+  .bar{height:.5rem;border-radius:2px;background:var(--line2);}
+  .bar+.bar{margin-top:.45rem;width:55%;}
+  .bar.ok{background:var(--ok-line);}
+  .schema .void{border:1px dashed var(--bad-line);border-radius:4px;height:2.4rem;
+                background:linear-gradient(135deg,transparent 0 5px,var(--bad-bg) 5px 6px,
+                transparent 6px 12px);background-size:12px 12px;}
+  .schema .unread{border:1px solid var(--none-line);border-radius:4px;height:2.4rem;
+                  background:var(--none-bg);}
+  /* The product is a comparison, so the page is one. Each entry spans two
+     columns — what the board advertises, what the employer lists — with a
+     gutter carrying the verdict between them. An absence is drawn as an
+     absence rather than described in a sentence.
+
+     Each side caps its own measure. Letting the columns take half the window
+     each put a job title and its answer 600px apart with 250px of nothing in
+     between, so the row read as three unrelated columns instead of one
+     comparison. The columns still divide the width; only the content inside
+     them stops stretching. */
+  .entry{border-bottom:1px solid var(--line2);}
+  .entry:last-child{border-bottom:0;}
+  .entry-grid{display:grid;grid-template-columns:1fr;gap:.5rem;
+              padding:1.35rem 0;align-items:start;}
+  .entry-grid > div{max-width:38rem;}
+  .gutter{display:flex;align-items:center;gap:.6rem;}
+  .gutter::before,.gutter::after{content:"";flex:1;height:1px;background:var(--line2);}
+  .side-label{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:.625rem;letter-spacing:.07em;text-transform:uppercase;
+              color:var(--dim);margin-bottom:.5rem;}
+  /* The absence is the finding, but three of these stacked as full-width
+     hatched slabs shouted louder than the verdicts they belong to. Same idea,
+     a third of the ink: a finer hatch, one accent edge instead of four dashed
+     ones, and no more width than the sentence inside it needs. */
+  .absent{border:1px dashed var(--bad-line);border-left:2px solid var(--bad);
+          border-radius:0 6px 6px 0;padding:.7rem .9rem;max-width:26rem;
+          background:repeating-linear-gradient(135deg,transparent 0 7px,
+                     var(--bad-bg) 7px 8px);}
+  /* The highlight is a band across the page, not a rectangle floating inside
+     it. Painted on the entry's own background it stopped at the shell padding,
+     which left a hard grey edge with a strip of page showing past it on both
+     sides — it read as a stray box rather than as "this row is open". The
+     pseudo-element bleeds back out by the gutter so the band reaches the window
+     edge, and stays inert so it never eats a click. */
+  /* The row is the control that opens and closes its own evidence, so it says
+     so with the cursor — and keeps saying so once open, which it stopped doing
+     when the `role="button"` came off for the duration. The panel inside it is
+     not a control, so it takes the cursor back. */
+  .entry{position:relative;cursor:pointer;}
+  .entry .entry-detail{cursor:auto;}
+  .entry::before{content:"";position:absolute;inset-block:0;
+                 inset-inline:calc(-1 * var(--gutter));pointer-events:none;
+                 background:transparent;transition:background-color .12s ease;}
+  .entry:hover::before,.entry-open::before{background:var(--raised);}
+  .entry > *{position:relative;}
+  /* The expanded evidence sits inside the entry, so it takes the entry's
+     gutters rather than drawing a second card inside one — no inset padding
+     and no width cap of its own, or it reads as a narrower panel dropped into
+     a wider row. */
+  .entry-detail{border-top:1px solid var(--line);margin-top:1.25rem;
+                padding:1.35rem 0 1.5rem;}
+  /* Prose still gets a measure: the panel is as wide as the row, the sentences
+     inside it are not. */
+  .measure{max-width:44rem;}
+  /* And the evidence inherits the comparison's geometry, so the advert lands
+     under the board column and the employer's page under the employer column
+     — the same two sides, one level deeper. */
+  .detail-grid{display:grid;grid-template-columns:1fr;gap:.75rem;}
+  @media (min-width:900px){
+    .detail-grid{grid-template-columns:minmax(0,30rem) 5.5rem minmax(0,1fr);gap:0;}
+    .detail-grid>:nth-child(1){grid-column:1;}
+    .detail-grid>:nth-child(2){grid-column:3;}
   }
 
-  .card{background:var(--card);border:1px solid var(--line);}
+  /* The list of roles we compared against. It was 25 accent-coloured links in
+     one tall stack, which shouted louder than the verdict above it — these are
+     the corroborating material, not the finding. Muted by default, accent only
+     under the cursor, and set in columns so the list stays a block rather than
+     a scroll. */
+  .roles{border:1px solid var(--line);border-radius:6px;background:var(--card);
+         padding:.85rem 1rem;margin-top:.6rem;}
+  .roles ul{columns:1;column-gap:2rem;margin:0;}
+  @media (min-width:700px){.roles ul{columns:2;}}
+  @media (min-width:1200px){.roles ul{columns:3;}}
+  .roles li{break-inside:avoid;padding:.2rem 0;}
+  .roles a{color:var(--muted);text-decoration:none;}
+  .roles a:hover{color:var(--accent);text-decoration:underline;}
+  /* A disclosure should look like one. The marker turns with the state. */
+  .disclose{display:inline-flex;align-items:center;gap:.5rem;}
+  .disclose::before{content:"";width:0;height:0;border-left:5px solid currentColor;
+                    border-block:4px solid transparent;transition:transform .12s ease;}
+  details[open] > .disclose::before{transform:rotate(90deg);}
+
+  @media (min-width:900px){
+    /* The board side takes a measure, not half the window. Two equal halves
+       put the job title and the answer to it ~600px apart with 240px of air
+       between the title and the verdict, which is what made the row read as
+       three unrelated columns. Capping the first column pulls the pivot back
+       against the thing it is judging. */
+    .entry-grid{grid-template-columns:minmax(0,30rem) 5.5rem minmax(0,1fr);
+                gap:0;padding:1.6rem 0;}
+    .gutter{flex-direction:column;justify-content:flex-start;padding-top:1.6rem;}
+    .gutter::before,.gutter::after{width:1px;height:auto;flex:1;}
+    .side-label{margin-bottom:.6rem;}
+  }
+  /* The column heads ride inside the sticky search bar rather than sticking on
+     their own. On their own they were `top:0 z-index:5`, i.e. underneath both
+     the masthead (z-30) and the bar (z-20) — they slid behind them and were
+     never seen. One sticky block, and the geometry still lines up because the
+     heads and the rows are both laid out inside `.shell`. */
+  .ledger-head{display:none;}
+  @media (min-width:900px){
+    .ledger-head{display:grid;grid-template-columns:minmax(0,30rem) 5.5rem minmax(0,1fr);
+                 border-top:1px solid var(--line2);margin-top:.75rem;padding-top:.6rem;}
+  }
+  /* Below the breakpoint the columns become rows, so each side names its own
+     source. Above it the heads do that once, at the top — the two must switch
+     at the same width or every column gets labelled twice. */
+  .narrow-only{display:block;}
+  @media (min-width:900px){.narrow-only{display:none;}}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:6px;}
   .raised{background:var(--raised);}
   .muted{color:var(--muted);} .dim{color:var(--dim);}
-  .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;}
-  .job{transition:box-shadow .12s ease,border-color .12s ease,transform .12s ease;}
-  .job:hover{border-color:var(--accent);box-shadow:var(--shadow);}
-  .job:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
-  .pill{border-radius:999px;font-weight:500;}
+  /* Square-ish rather than round: the reference's radii are small and constant,
+     and a 999px pill beside a 4px button reads as two design systems. */
+  .pill{border-radius:4px;font-weight:500;}
   .v-ok  {background:var(--ok-bg);  color:var(--ok);  border:1px solid var(--ok-line);}
   .v-bad {background:var(--bad-bg); color:var(--bad); border:1px solid var(--bad-line);}
-  .v-warn{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line);}
   .v-none{background:var(--none-bg);color:var(--none);border:1px solid var(--none-line);}
-  .chip{border:1px solid var(--line);background:var(--card);color:var(--muted);}
-  .chip:hover{color:var(--ink);}
+  .chip{border:1px solid var(--line);background:var(--card);color:var(--muted);
+        font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+        text-transform:uppercase;letter-spacing:.06em;font-size:.6875rem;}
+  .chip:hover{color:var(--ink);background:var(--raised);}
   .chip.on{background:var(--ink);border-color:var(--ink);color:var(--bg);}
-  input,select{background:var(--card);border:1px solid var(--line);color:var(--ink);}
+  .chip.on:hover{background:var(--ink);color:var(--bg);}
+  input,select{background:var(--card);border:1px solid var(--line);color:var(--ink);
+               border-radius:4px;}
   input::placeholder{color:var(--dim);}
   input:focus,select:focus{outline:2px solid var(--ring);outline-offset:-1px;border-color:var(--accent);}
+  /* Buttons and inputs carried the page's own focus ring; the chips and the
+     rows were falling back to the browser's default, which on this palette is
+     a bright orange that belongs to no token here. */
+  .chip:focus-visible,.entry:focus-visible,
+  a:focus-visible,summary:focus-visible{outline:2px solid var(--ring);
+                                        outline-offset:2px;border-radius:2px;}
   a.link{color:var(--accent);} a.link:hover{text-decoration:underline;}
   details>summary{cursor:pointer;list-style:none;} details>summary::-webkit-details-marker{display:none;}
-  .sect-num{font-size:.68rem;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;}
-  kbd{background:var(--raised);border:1px solid var(--line);color:var(--muted);}
+
+  /* The stat strip under the headline: mono caption, a value large enough to
+     be the point of the cell, hairline dividers rather than boxes. */
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+         border:1px solid var(--line);border-radius:6px;background:var(--card);
+         overflow:hidden;}
+  @media (min-width:640px){.stats{grid-template-columns:repeat(4,minmax(0,1fr));}}
+  .stats>div{padding:.9rem 1rem;border-left:1px solid var(--line2);
+             border-top:1px solid var(--line2);}
+  .stats>div:nth-child(-n+2){border-top:0;}
+  .stats>div:nth-child(odd){border-left:0;}
+  @media (min-width:640px){
+    .stats>div{border-top:0;border-left:1px solid var(--line2);}
+    .stats>div:first-child{border-left:0;}
+    .stats>div:nth-child(odd){border-left:1px solid var(--line2);}
+    .stats>div:first-child{border-left:0;}
+  }
+  .stats b{display:block;font-family:"Geist Mono",ui-monospace,Menlo,monospace;
+           font-size:1.5rem;font-weight:500;letter-spacing:-.02em;
+           color:var(--accent);margin-top:.4rem;line-height:1.1;}
 </style>
 </head>
 <body class="antialiased">
 
-<!-- ── masthead + search ──────────────────────────────────────────────── -->
-<header class="border-b" style="background:var(--card);border-color:var(--line)">
-  <div class="shell py-4 flex items-center justify-between gap-4">
-    <div class="flex items-center gap-2.5">
-      <span class="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
-            style="background:var(--accent);color:#fff">G</span>
-      <div>
-        <div class="serif text-[17px] leading-tight">GhostHire</div>
-        <div class="text-[11px] dim leading-tight">jobs, checked against the employer</div>
-      </div>
-    </div>
-    <div class="flex items-center gap-1.5">
-      <a href="#how" class="text-sm muted hover:opacity-80 px-2">How we verify</a>
+<!-- ── masthead ───────────────────────────────────────────────────────── -->
+<header class="sticky top-0 z-30 border-b" style="background:var(--card);border-color:var(--line)">
+  <div class="shell h-14 flex items-center justify-between gap-4">
+    <a href="#top" class="flex items-center gap-2.5 shrink-0">
+      <svg viewBox="0 0 32 32" width="28" height="28" class="shrink-0" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M8.6 26.4V15a7.4 7.4 0 0114.8 0v11.4l-3.7-3.4-3.7 3.4-3.7-3.4z" fill="var(--card)"/><rect x="12.4" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/><rect x="17.1" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/></svg>
+      <span class="display text-[15px]">GhostHire</span>
+    </a>
+    <nav class="wide-only items-center gap-6" aria-label="Sections">
+      <a href="#listings" class="label hover:text-[color:var(--ink)]">The listings</a>
+      <a href="#how" class="label hover:text-[color:var(--ink)]">The method</a>
+      <a href="#coverage" class="label hover:text-[color:var(--ink)]">Coverage</a>
+      <a href="#sources" class="label hover:text-[color:var(--ink)]">Sources</a>
+    </nav>
+    <div class="flex items-center gap-2 shrink-0">
       <button id="theme" type="button" aria-label="Switch between light and dark"
-        class="w-9 h-9 rounded-lg chip flex items-center justify-center"></button>
+        class="btn w-9 h-9 !px-0"></button>
+      <a href="#listings" class="btn btn-primary sm-only">Browse jobs</a>
     </div>
   </div>
+</header>
 
-  <div class="shell pb-5">
+<!-- ── the claim, and the numbers behind it ───────────────────────────── -->
+<section id="top" class="relative" style="background-image:var(--wash)">
+  <div class="shell pt-12 pb-10 sm:pt-16 sm:pb-14 grid gap-12
+              lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:items-center">
+   <div>
+    <p class="eyebrow label">
+      <span>Job listings, checked at the source</span>
+      <span class="hot">Evidence, not proof</span>
+    </p>
+
+    <h1 class="display mt-6 max-w-3xl"
+        style="font-size:clamp(2.1rem,4.6vw,4rem)">
+      Jobs, <span class="ul">checked</span> against the employer.
+    </h1>
+
+    <p class="label mt-5">Public job boards · Employer careers pages · Archived before anything read them</p>
+
+    <p class="muted text-base leading-relaxed mt-5 max-w-2xl">
+      A board can advertise a role the employer is not hiring for. So every listing here
+      is read twice — once on the board, once on the company's own careers page — and the
+      two are put side by side. Where they disagree, you get both links and decide for
+      yourself. Where the careers page cannot be read, we say so and score nothing.
+    </p>
+
+    <div id="context" class="mt-8 max-w-3xl"></div>
+
+    <div class="flex flex-wrap items-center gap-3 mt-7">
+      <a href="#listings" class="btn btn-primary">Browse the jobs <span aria-hidden="true">→</span></a>
+      <a href="#how" class="btn">How a job gets verified</a>
+    </div>
+   </div>
+
+   <!-- The comparison, drawn rather than described. Deliberately shapes and
+        not text: a mock listing with a plausible job title sitting next to
+        real verdicts would be indistinguishable from evidence. -->
+   <aside class="lg-only">
+     <div class="card overflow-hidden">
+       <div class="schema py-2.5" style="border-bottom:1px solid var(--line)">
+         <span class="label">On the board</span><span></span>
+         <span class="label">On the employer's page</span>
+       </div>
+       <div class="schema" aria-hidden="true">
+         <div><div class="bar"></div><div class="bar"></div></div>
+         <div class="flex justify-center">
+           <span class="pill v-ok inline-flex items-center justify-center w-7 h-7">
+             <svg viewBox="0 0 16 16" class="w-3 h-3" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 5"/></svg>
+           </span>
+         </div>
+         <div><div class="bar ok"></div><div class="bar ok"></div></div>
+       </div>
+       <div class="schema" aria-hidden="true">
+         <div><div class="bar"></div><div class="bar"></div></div>
+         <div class="flex justify-center">
+           <span class="pill v-bad inline-flex items-center justify-center w-7 h-7">
+             <svg viewBox="0 0 16 16" class="w-3 h-3" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round"><path d="M8 3.5v5.5"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></svg>
+           </span>
+         </div>
+         <div class="void"></div>
+       </div>
+       <div class="schema" aria-hidden="true">
+         <div><div class="bar"></div><div class="bar"></div></div>
+         <div class="flex justify-center">
+           <span class="pill v-none inline-flex items-center justify-center w-7 h-7">
+             <svg viewBox="0 0 16 16" class="w-3 h-3" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round"><path d="M6 6a2 2 0 113 1.7c-.6.4-1 .8-1 1.6"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></svg>
+           </span>
+         </div>
+         <div class="unread"></div>
+       </div>
+     </div>
+     <p class="label mt-3">Corroborated · Absent · Careers page unreadable</p>
+   </aside>
+  </div>
+</section>
+
+<main>
+
+<!-- ── search ─────────────────────────────────────────────────────────── -->
+<div class="shell pt-2 pb-6">
+  <p class="marker label"><span><b>01</b> / <em>The listings</em></span></p>
+</div>
+
+<!-- The bar sticks while the listings are on screen and lets go once they are
+     behind you — as a direct child of <body> it stayed pinned over the method
+     and coverage sections, where a job search is no use. -->
+<section id="listings">
+<div class="sticky top-14 z-20 border-y"
+     style="background:var(--card);border-color:var(--line)">
+  <div class="shell py-3">
     <div class="flex flex-col sm:flex-row gap-2">
       <div class="relative flex-1">
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color:var(--dim)"
@@ -137,59 +461,46 @@
           <circle cx="9" cy="9" r="6"/><path d="M14 14l4 4"/></svg>
         <input id="q" type="search" autocomplete="off"
           placeholder="Search job title, company or city"
-          class="w-full rounded-lg pl-9 pr-3 py-2.5 text-sm">
+          class="w-full pl-9 pr-3 py-2.5 text-sm">
       </div>
-      <select id="company-filter" class="rounded-lg px-3 py-2.5 text-sm sm:w-64"></select>
+      <select id="company-filter" class="px-3 py-2.5 text-sm sm:w-64"></select>
     </div>
     <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
       <div id="filters" class="flex flex-wrap gap-2"></div>
-      <label class="text-xs muted flex items-center gap-2 shrink-0">
+      <label class="label flex items-center gap-2 shrink-0">
         Sort
-        <select id="sort" class="rounded-lg px-2 py-1.5 text-xs">
+        <select id="sort" class="px-2 py-1.5 text-xs" style="text-transform:none;
+                font-family:Inter,system-ui,sans-serif;letter-spacing:normal;color:var(--ink)">
           <option value="verdict">Verified first</option>
           <option value="recent">Most recent</option>
           <option value="company">Employer A–Z</option>
         </select>
       </label>
     </div>
-  </div>
-  <div id="context" class="border-t" style="border-color:var(--line2);background:var(--bg)"></div>
-</header>
 
-<main class="shell py-6">
-  <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-    <p id="result-count" class="text-sm muted"></p>
-    <p class="text-xs dim">Every verdict links the job and the employer's own careers page.</p>
+    <div id="ledger-head" class="ledger-head">
+      <div class="side-label" style="margin:0">Advertised on the job board</div>
+      <div></div>
+      <div class="side-label" style="margin:0">On the employer's own careers page</div>
+    </div>
   </div>
+</div>
 
-  <div class="panes">
+  <div class="shell py-6">
+    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-5">
+      <p id="result-count" class="text-sm muted"></p>
+      <p class="label">Open either side to check the claim yourself</p>
+    </div>
 
-  <div id="jobs" class="space-y-2">
-    
-    <!-- skeletons: a blank page during the fetch reads as "no jobs" -->
-    <div class="card rounded-xl p-5 animate-pulse"><div class="flex gap-4">
-      <div class="w-10 h-10 rounded-lg" style="background:var(--line)"></div>
-      <div class="flex-1 space-y-2.5">
-        <div class="h-4 rounded w-1/3" style="background:var(--line)"></div>
-        <div class="h-3 rounded w-1/5" style="background:var(--line2)"></div>
-        <div class="h-3 rounded w-2/5" style="background:var(--line2)"></div></div></div></div>
-    <div class="card rounded-xl p-5 animate-pulse"><div class="flex gap-4">
-      <div class="w-10 h-10 rounded-lg" style="background:var(--line)"></div>
-      <div class="flex-1 space-y-2.5">
-        <div class="h-4 rounded w-2/5" style="background:var(--line)"></div>
-        <div class="h-3 rounded w-1/6" style="background:var(--line2)"></div>
-        <div class="h-3 rounded w-1/3" style="background:var(--line2)"></div></div></div></div>
-  
+    <div id="jobs"></div>
   </div>
-
-    <aside id="pane" class="pane hidden"></aside>
-  </div>
+</section>
 
   <!-- ── how we verify ────────────────────────────────────────────────── -->
-  <section id="how" class="column mt-14 pt-10 border-t" style="border-color:var(--line)">
-    <p class="sect-num mb-2">The method</p>
-    <h2 class="serif text-2xl">How a job gets verified</h2>
-    <p class="muted text-sm mt-2 max-w-3xl">
+  <section id="how" class="shell section-gap">
+    <p class="marker label mb-8"><span><b>02</b> / <em>The method</em></span></p>
+    <h2 class="display text-[1.75rem]">How a job gets verified</h2>
+    <p class="muted text-sm mt-3 max-w-3xl">
       We read the job board and, separately, the employer's own careers page, then
       compare. A job listed on both is corroborated. A job on the board but absent
       from the careers page is worth a question — not an accusation, because a
@@ -198,28 +509,30 @@
     </p>
 
     <div class="grid sm:grid-cols-3 gap-3 mt-5">
-      <div class="card rounded-xl p-4">
+      <div class="card p-4">
         <span id="legend-ok"></span>
         <p class="muted text-sm mt-3">Found on the company's own careers page. The
           ordinary, healthy case.</p>
       </div>
-      <div class="card rounded-xl p-4">
+      <div class="card p-4">
         <span id="legend-bad"></span>
         <p class="muted text-sm mt-3">Advertised on the board, absent from the
           employer's own listings. Open both links and judge for yourself.</p>
       </div>
-      <div class="card rounded-xl p-4">
+      <div class="card p-4">
         <span id="legend-none"></span>
         <p class="muted text-sm mt-3">We could not read this employer's careers
           page, so there is no verdict — not a pass, not a fail.</p>
       </div>
     </div>
 
-    <figure id="coverage-fig" class="mt-8"></figure>
+    <p id="coverage" class="marker label section-gap mb-8"><span><b>03</b> / <em>Coverage</em></span></p>
+    <figure id="coverage-fig"></figure>
     <div id="companies" class="mt-6"></div>
 
-    <details class="mt-8 card rounded-xl p-4">
-      <summary class="font-medium">Where the data comes from</summary>
+    <p id="sources" class="marker label section-gap mb-8"><span><b>04</b> / <em>Sources</em></span></p>
+    <details class="card p-4">
+      <summary class="disclose font-medium hover-ink">Where the data comes from</summary>
       <div class="mt-4">
         <p class="muted text-sm max-w-3xl">
           Listings are collected with Bright Data Scraper Studio collectors. Every
@@ -234,20 +547,41 @@
   </section>
 </main>
 
-<footer class="border-t mt-10" style="border-color:var(--line)">
-  <div class="shell py-6 text-xs dim">
-    Evidence worth checking, not proof. A job missing from a careers page has innocent
-    explanations. Only public pages are read — nothing behind a login or paywall.
+<footer class="border-t section-gap" style="border-color:var(--line)">
+  <div class="shell py-10 grid gap-8 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+    <div>
+      <div class="flex items-center gap-2.5">
+        <svg viewBox="0 0 32 32" width="26" height="26" class="shrink-0" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M8.6 26.4V15a7.4 7.4 0 0114.8 0v11.4l-3.7-3.4-3.7 3.4-3.7-3.4z" fill="var(--card)"/><rect x="12.4" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/><rect x="17.1" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/></svg>
+        <span class="display text-[15px]">GhostHire</span>
+      </div>
+      <p class="muted text-sm mt-3 max-w-md">
+        Evidence worth checking, not proof. A job missing from a careers page has innocent
+        explanations — a page can lag, or move. Open both links and judge for yourself.
+      </p>
+    </div>
+    <div>
+      <p class="label mb-3">On this page</p>
+      <ul class="space-y-2 text-sm">
+        <li><a href="#listings" class="hover-ink">The listings</a></li>
+        <li><a href="#how" class="hover-ink">How a job gets verified</a></li>
+        <li><a href="#coverage" class="hover-ink">Coverage</a></li>
+        <li><a href="#sources" class="hover-ink">Where the data comes from</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="label mb-3">Scope</p>
+      <ul class="space-y-2 text-sm muted">
+        <li>Public pages only</li>
+        <li>Nothing behind a login</li>
+        <li>Archived before it is read</li>
+      </ul>
+    </div>
+  </div>
+  <div class="shell pb-8">
+    <p class="label pt-6 border-t" style="border-color:var(--line2)">
+      A verdict here is a question, not an accusation</p>
   </div>
 </footer>
-
-<!-- ── job detail ─────────────────────────────────────────────────────── -->
-<div id="detail" role="dialog" aria-modal="true" aria-label="Job detail"
-     class="hidden fixed inset-0 z-30 overflow-y-auto" style="background:rgba(15,22,34,.45)">
-  <div class="max-w-3xl mx-auto my-8 card rounded-2xl shadow-xl">
-    <div id="detail-body" class="p-6"></div>
-  </div>
-</div>
 
 <script>
 const $ = (s, r=document) => r.querySelector(s);
@@ -277,7 +611,7 @@ function linkOrText(url, label, cls) {
 
 function isDark(){ return document.documentElement.getAttribute("data-theme") === "dark"; }
 
-let ALL = [], META = null, WHY = {}, FILTER = "checked", EXPANDED = false;
+let ALL = [], WHY = {}, FILTER = "checked", EXPANDED = false;
 // What the current filter and search actually produced, so the detail view can
 // step through the same list the reader is looking at rather than all of it.
 let VISIBLE = [];
@@ -285,6 +619,19 @@ const PAGE = 20;
 const INITIAL = new URLSearchParams(location.search);
 
 async function api(p){ const r = await fetch(p); if(!r.ok) throw new Error(`${p} → ${r.status}`); return r.json(); }
+
+// Placeholder rows in the real row geometry, so the list does not pop into
+// existence and nothing shifts when the data lands on top of them.
+function skeleton(n = 5) {
+  const bar = w => `<div class="skel" style="width:${w}"></div>`;
+  return Array.from({length: n}, () => `<div class="entry">
+    <div class="entry-grid">
+      <div>${bar("46%")}<div class="mt-2.5">${bar("22%")}</div>
+           <div class="mt-3">${bar("34%")}</div></div>
+      <div class="gutter"><span class="skel" style="width:1.75rem;height:1.75rem"></span></div>
+      <div>${bar("38%")}<div class="mt-2.5">${bar("28%")}</div></div>
+    </div></div>`).join("");
+}
 
 // ── verdict, in the reader's language rather than the schema's ──────────
 // A glyph as well as a colour: colour alone fails for a colour-blind reader,
@@ -311,26 +658,6 @@ function verdictPill(r, extra="") {
   const v = verdict(r);
   return `<span class="pill ${v.cls} inline-flex items-center gap-1.5 text-xs px-2.5 py-1
     whitespace-nowrap ${extra}">${v.glyph}${v.label}</span>`;
-}
-
-// Muted tints rather than saturated brand colours: fifty of these on one
-// screen should read as texture, not fifty competing signals. The verdict pill
-// is the only thing on a card allowed to shout.
-//
-// A tint picked for a white surface is muddy on a dark one, so each theme has
-// its own pair — same hue family, stepped for its own background.
-const AVATAR_LIGHT = ["#f0e7e5 #8c1d18","#f2ece0 #9a6a15","#e6eef5 #1f4e79",
-                      "#ece7f0 #5b3a6e","#e4efed #0f766e","#f1ece6 #6b5340"];
-const AVATAR_DARK  = ["#2c1a18 #e0685f","#2a2114 #c99328","#1a2530 #4a87c4",
-                      "#241d2b #976fb2","#122b28 #2dd4bf","#282019 #b39a80"];
-function avatar(name) {
-  const initials = String(name || "?").replace(/[^A-Za-z ]/g, "").trim()
-    .split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
-  let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const set = isDark() ? AVATAR_DARK : AVATAR_LIGHT;
-  const [bg, fg] = set[h % set.length].split(" ");
-  return `<span class="w-10 h-10 rounded-lg flex items-center justify-center text-xs
-    font-semibold shrink-0" style="background:${bg};color:${fg}">${esc(initials)}</span>`;
 }
 
 // The board says "3 weeks ago"; we stored an ISO date and were rendering
@@ -374,27 +701,59 @@ const PIN = `<svg viewBox="0 0 16 16" class="w-3.5 h-3.5 shrink-0" fill="none" s
 const CLOCK = `<svg viewBox="0 0 16 16" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor"
   stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.2l2 1.2"/></svg>`;
 
+function sideBoard(r) {
+  return `<div>
+    <div class="side-label narrow-only">Advertised on the job board</div>
+    <h3 class="display leading-snug text-[1.0625rem]">${esc(r.job_title)}</h3>
+    <p class="text-sm muted mt-1">${esc(r.company)}</p>
+    <div class="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 mt-2.5 text-xs muted">
+      ${r.location ? `<span class="inline-flex items-center gap-1.5">${PIN}${esc(r.location)}</span>` : ""}
+      ${r.salary_range ? `<span class="mono text-[11px]" style="color:var(--ink)">${esc(r.salary_range)}</span>` : ""}
+      <span class="inline-flex items-center gap-1.5">${CLOCK}${posted(r)}</span>
+    </div>
+  </div>`;
+}
+
+// The right-hand side is the point. A match is set in the same type as the
+// advert so the two read as a pair; an absence is drawn as a gap rather than
+// described, because the gap IS the finding.
+function sideEmployer(r) {
+  const label = `<div class="side-label narrow-only">On the employer's careers page</div>`;
+  if (!r.assessed) {
+    const why = WHY_SHORT[WHY[r.company]];
+    return `<div>${label}
+      <div class="rounded-[6px] px-4 py-3.5" style="background:var(--none-bg);
+           border:1px solid var(--none-line)">
+        <p class="text-sm muted">Not checked</p>
+        <p class="text-xs dim mt-1">${esc(why || "we did not select a careers page for this employer")}</p>
+      </div></div>`;
+  }
+  if (r.ghost_score === 0) {
+    return `<div>${label}
+      <h3 class="display leading-snug text-[17px]" style="color:var(--ok)">${esc(r.job_title)}</h3>
+      <p class="text-sm muted mt-1">listed by ${esc(r.company)}</p>
+      <p class="text-xs dim mt-2.5">Found among their open roles.</p>
+    </div>`;
+  }
+  return `<div>${label}
+    <div class="absent">
+      <p class="display text-[15px]" style="color:var(--bad)">Nothing matching</p>
+      <p class="text-xs muted mt-1.5">Not among ${esc(r.company)}'s open roles.</p>
+    </div></div>`;
+}
+
 function jobCard(r) {
-  const why = !r.assessed && WHY_SHORT[WHY[r.company]];
-  return `<article class="job card rounded-xl px-4 py-3.5 sm:px-5 sm:py-4 cursor-pointer" data-id="${r.id}"
-      tabindex="0" role="button" aria-label="${esc(r.job_title)} at ${esc(r.company)}">
-    <div class="flex gap-4">
-      ${avatar(r.company)}
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
-          <div class="min-w-0">
-            <h3 class="serif leading-snug text-[17px]">${esc(r.job_title)}</h3>
-            <p class="text-sm muted mt-0.5">${esc(r.company)}</p>
-          </div>
-          ${verdictPill(r)}
-        </div>
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2.5 text-xs muted">
-          ${r.location ? `<span class="inline-flex items-center gap-1.5">${PIN}${esc(r.location)}</span>` : ""}
-          ${r.salary_range ? `<span class="mono text-[11px]" style="color:var(--ink)">${esc(r.salary_range)}</span>` : ""}
-          <span class="inline-flex items-center gap-1.5">${CLOCK}${posted(r)}</span>
-        </div>
-        ${why ? `<p class="text-xs dim mt-2.5">Not checked — ${esc(why)}.</p>` : ""}
+  const v = verdict(r);
+  return `<article class="entry" data-id="${r.id}" tabindex="0" role="button"
+      aria-expanded="false"
+      aria-label="${esc(r.job_title)} at ${esc(r.company)} — ${v.label}. Show the evidence">
+    <div class="entry-grid">
+      ${sideBoard(r)}
+      <div class="gutter">
+        <span class="pill ${v.cls} inline-flex items-center justify-center
+          w-7 h-7 shrink-0" title="${esc(v.label)}">${v.glyph}</span>
       </div>
+      ${sideEmployer(r)}
     </div>
   </article>`;
 }
@@ -416,11 +775,15 @@ function matches(r, q) {
   return q.toLowerCase().split(/\s+/).every(t => hay.includes(t));
 }
 
+// One writer for the whole query string, including `listing`. Previously
+// render() wrote the URL without it and openDetail() appended it separately,
+// so any re-render silently dropped the open job out of the link.
 function syncUrl() {
   const p = new URLSearchParams();
   if ($("#q").value.trim()) p.set("q", $("#q").value.trim());
   if (FILTER !== "checked") p.set("show", FILTER);
   if ($("#company-filter").value) p.set("employer", $("#company-filter").value);
+  if (CURRENT !== null) p.set("listing", CURRENT);
   const qs = p.toString();
   history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
 }
@@ -446,17 +809,27 @@ function render() {
   rows.sort(SORTS[$("#sort").value] || SORTS.verdict);
 
   VISIBLE = rows;
+  // A job that survived the filter but sits past the page cap still has to be
+  // drawn if it is the one being opened — otherwise a deep link to result 40
+  // finds no row to attach the evidence to and silently opens nothing.
+  if (CURRENT !== null
+      && rows.findIndex(r => String(r.id) === String(CURRENT)) >= PAGE) EXPANDED = true;
   const shown = EXPANDED ? rows : rows.slice(0, PAGE);
   const hidden = rows.length - shown.length;
   const checked = rows.filter(r => r.assessed).length;
 
-  $("#context").innerHTML = `<div class="shell py-2.5 flex flex-wrap
-    items-center gap-x-5 gap-y-1 text-xs muted">
-    <span><strong style="color:var(--ink)">${ALL.length}</strong> jobs</span>
-    <span><strong style="color:var(--ink)">${new Set(ALL.map(r => r.company)).size}</strong> employers</span>
-    <span><strong style="color:var(--ink)">${ALL.filter(r => r.assessed).length}</strong> checked against the employer</span>
-    <span class="dim">updated from the archive on every deploy</span>
-  </div>`;
+  // The headline numbers, set as values rather than as a sentence: the count
+  // is the cell's subject, the mono caption only names it. Rendered from the
+  // same array the list draws from, so the strip cannot drift from the page.
+  const stat = (label, n) =>
+    `<div><span class="label">${label}</span><b>${n}</b></div>`;
+  $("#context").innerHTML = `<div class="stats">
+    ${stat("Jobs collected", ALL.length)}
+    ${stat("Employers", new Set(ALL.map(r => r.company)).size)}
+    ${stat("Checked at the source", ALL.filter(r => r.assessed).length)}
+    ${stat("Not on a careers page", ALL.filter(r => r.assessed && r.ghost_score > 0).length)}
+  </div>
+  <p class="label mt-3">Updated from the archive on every deploy</p>`;
 
   const filtered = rows.length !== ALL.length;
   $("#result-count").innerHTML = !rows.length ? ""
@@ -467,26 +840,57 @@ function render() {
          checked against the employer's own careers page`;
   $("#jobs").innerHTML = rows.length
     ? shown.map(jobCard).join("") + (hidden > 0
-      ? `<button id="more" class="w-full card rounded-xl py-3 text-sm muted hover:text-black">
-           Show ${hidden} more</button>` : "")
-    : `<div class="card rounded-xl p-8 text-center">
+      ? `<button id="more" class="btn w-full mt-4">Show ${hidden} more</button>` : "")
+    : `<div class="card p-8 text-center">
          <p class="font-medium">No job matches that search.</p>
          <p class="muted text-sm mt-1">Try a different title, company or city.</p></div>`;
 
+  // The evidence panel is appended *inside* the row it explains, so every click
+  // on it bubbles back to the row. Left alone, the row handler rebuilt the panel
+  // under the reader's hand: <details> snapped shut, ‹ › stepped and were undone,
+  // and ✕ closed then immediately re-opened. A click on the evidence, or on any
+  // control at all, belongs to that control and not to the row.
+  const ownedByRow = e =>
+    !e.target.closest(".entry-detail") &&
+    !e.target.closest("a, button, summary, input, select, textarea");
+
+  // The row is the control for its own evidence, so it toggles: a second click
+  // on the row that opened the panel closes it, rather than tearing the panel
+  // down and building the same one again.
+  const toggle = el =>
+    el.classList.contains("entry-open") ? closeDetail() : openDetail(el.dataset.id);
+
   document.querySelectorAll("article[data-id]").forEach(el => {
-    el.addEventListener("click", () => openDetail(el.dataset.id));
-    // The cards are focusable, so they have to be operable from the keyboard
-    // too — a focus ring that does nothing on Enter is worse than none.
+    el.addEventListener("click", e => {
+      if (ownedByRow(e)) toggle(el);
+    });
+    // The rows are focusable, so they have to be operable from the keyboard
+    // too — a focus ring that does nothing on Enter is worse than none. Same
+    // rule: Space pressed on the ‹ button is the button's, not the row's.
     el.addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(el.dataset.id); }
+      if (!ownedByRow(e)) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(el); }
     });
   });
+
+  // Column heads label a table that has columns. With no results there is
+  // nothing under them to head.
+  $("#ledger-head").classList.toggle("hidden", !rows.length);
+
   const more = $("#more");
   if (more) more.addEventListener("click", () => { EXPANDED = true; render(); });
 
   document.querySelectorAll("[data-filter]").forEach(b =>
-    b.className = `chip pill px-3 py-1.5 text-xs ${b.dataset.filter === FILTER ? "on" : ""}`);
-  if (CURRENT !== null) markSelected(CURRENT);
+    b.className = `chip pill px-3 py-1.5 ${b.dataset.filter === FILTER ? "on" : ""}`);
+
+  // render() replaces #jobs wholesale, which takes any open evidence with it.
+  // If the open job survived the new filter, put it back; if it did not, drop
+  // the state rather than leave CURRENT pointing at a row that no longer exists
+  // and an arrow key re-opening a panel out of nowhere.
+  if (CURRENT !== null) {
+    if (rows.some(r => String(r.id) === String(CURRENT))) openDetail(CURRENT);
+    else CURRENT = null;
+  }
   syncUrl();
 }
 
@@ -504,30 +908,18 @@ async function openDetail(id) {
   const body = `
     <div class="detail-inner">
     <div class="flex items-start justify-between gap-4">
-      <div class="flex gap-3.5 min-w-0">
-        ${avatar(d.company)}
-        <div class="min-w-0">
-          <h2 class="serif text-xl leading-snug">${esc(d.job_title)}</h2>
-          <p class="muted text-sm mt-0.5">${esc(d.company)}${d.location ? " · " + esc(d.location) : ""}</p>
-        </div>
-      </div>
+      <p class="label" style="margin-top:.4rem">The evidence</p>
       <div class="flex items-center gap-1 shrink-0">
         <button onclick="step(-1)" aria-label="Previous job" title="Previous (←)"
-          class="w-8 h-8 rounded-lg muted hover:text-black" style="border:1px solid var(--line)">‹</button>
+          class="w-8 h-8 rounded-[4px] hover-ink" style="border:1px solid var(--line)">‹</button>
         <button onclick="step(1)" aria-label="Next job" title="Next (→)"
-          class="w-8 h-8 rounded-lg muted hover:text-black" style="border:1px solid var(--line)">›</button>
+          class="w-8 h-8 rounded-[4px] hover-ink" style="border:1px solid var(--line)">›</button>
         <button onclick="closeDetail()" aria-label="Close"
-          class="w-8 h-8 rounded-lg muted hover:text-black ml-1" style="border:1px solid var(--line)">✕</button>
+          class="w-8 h-8 rounded-[4px] hover-ink ml-1" style="border:1px solid var(--line)">✕</button>
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-2 mt-4">
-      ${verdictPill(d)}
-      ${d.salary_range ? `<span class="pill chip mono text-[11px] px-2.5 py-1">${esc(d.salary_range)}</span>` : ""}
-      <span class="pill chip text-xs px-2.5 py-1">${posted(d)}</span>
-    </div>
-
-    <div class="mt-5 rounded-xl p-4" style="background:var(--bg)">
+    <div class="mt-4 rounded-[6px] p-4 measure" style="background:var(--bg);border:1px solid var(--line)">
       ${d.assessed
         ? (m
           ? `<p class="font-medium" style="color:var(--ok)">This job is listed on ${esc(d.company)}'s own careers page.</p>
@@ -543,14 +935,14 @@ async function openDetail(id) {
              That is not evidence either way.</p>`}
     </div>
 
-    <div class="grid sm:grid-cols-2 gap-3 mt-4">
-      <div class="card rounded-xl p-4">
-        <p class="text-xs dim uppercase tracking-wide mb-2">The job advert</p>
+    <div class="detail-grid mt-4">
+      <div class="card p-4">
+        <p class="label mb-2">The job advert</p>
         <p class="text-sm">${esc(d.job_title)}</p>
         <p class="mt-2">${linkOrText(d.board_url, "Open the advert →", "link text-sm break-all")}</p>
       </div>
-      <div class="card rounded-xl p-4">
-        <p class="text-xs dim uppercase tracking-wide mb-2">The employer's careers page</p>
+      <div class="card p-4">
+        <p class="label mb-2">The employer's careers page</p>
         ${m ? `<p class="text-sm">${esc(m.job_title)}</p>
                <p class="mt-2">${linkOrText(m.career_url, "Open the employer's listing →", "link text-sm break-all")}</p>`
             : d.career_page_url
@@ -562,54 +954,59 @@ async function openDetail(id) {
       </div>
     </div>
 
-    ${d.career_page_roles.length ? `<details class="mt-4">
-      <summary class="text-sm muted hover:text-black">
+    ${d.career_page_roles.length ? `<details class="mt-5">
+      <summary class="label disclose hover-ink">
         See all ${d.career_page_roles.length} roles we compared against</summary>
-      <ul class="mt-2 space-y-1 max-h-56 overflow-y-auto">
+      <div class="roles"><ul>
         ${d.career_page_roles.map(r =>
-          `<li class="text-sm">${linkOrText(r.career_url, r.job_title, "link")}</li>`).join("")}
-      </ul></details>` : ""}
+          `<li class="text-sm">${linkOrText(r.career_url, r.job_title, "")}</li>`).join("")}
+      </ul></div></details>` : ""}
 
-    <p class="text-xs dim mt-5 pt-4 border-t" style="border-color:var(--line)">
+    <p class="label mt-5 pt-4 border-t" style="border-color:var(--line)">
       Collected by <span class="mono">${esc(d.collector_id || "unknown")}</span>
       · archived before anything read it</p>
     </div>`;
 
 
-  // Tailwind's lg: and the pane's own media query would have to agree forever;
-  // one source of truth is cheaper.
-  if (WIDE()) {
-    $("#pane").innerHTML = body;
-    $("#pane").classList.remove("hidden");
-    markSelected(id);
-  } else {
-    $("#detail-body").innerHTML = body;
-    $("#detail").classList.remove("hidden");
-    const btn = $("#detail-body button"); if (btn) btn.focus();
-  }
-  const p = new URLSearchParams(location.search); p.set("listing", id);
-  history.replaceState(null, "", `?${p}`);
+  // The evidence belongs under the comparison it explains, not beside it or
+  // over it — the reader is already looking at the two sides, and the detail
+  // is the argument between them.
+  const entry = document.querySelector(`article[data-id="${CSS.escape(String(id))}"]`);
+  // The row can be absent — a `?listing=` for a job the current filter excludes.
+  // Leaving CURRENT set would have written that id into the URL and armed the
+  // arrow keys for a panel that was never opened.
+  if (!entry) { CURRENT = null; syncUrl(); return; }
+  closeOpenPanels(entry);
+  entry.querySelector(".entry-detail")?.remove();
+  const slot = document.createElement("div");
+  slot.className = "entry-detail pb-6";
+  slot.innerHTML = body;
+  entry.appendChild(slot);
+  entry.classList.add("entry-open");
+  // While the panel is inside it the row is no longer a button: a button may
+  // not contain buttons, links and a <summary>. It goes back to being one when
+  // the evidence closes.
+  entry.removeAttribute("role");
+  entry.removeAttribute("tabindex");
+  entry.setAttribute("aria-expanded", "true");
+  slot.querySelector("button")?.focus();
+  syncUrl();
 }
 
-const WIDE = () => matchMedia("(min-width:1060px)").matches;
-
-function markSelected(id) {
-  document.querySelectorAll("article[data-id]").forEach(el => {
-    const on = String(el.dataset.id) === String(id);
-    el.style.borderColor = on ? "var(--accent)" : "";
-    el.style.background = on ? "var(--raised)" : "";
+// Shutting a panel is the same three steps wherever it happens, and the row it
+// belonged to has to be handed back its button semantics every time.
+function closeOpenPanels(except) {
+  document.querySelectorAll(".entry-open").forEach(el => {
+    if (el === except) return;
+    el.classList.remove("entry-open");
+    el.querySelector(".entry-detail")?.remove();
+    el.setAttribute("role", "button");
+    el.setAttribute("tabindex", "0");
+    el.setAttribute("aria-expanded", "false");
   });
 }
 
-function paneEmpty() {
-  if (!WIDE()) { $("#pane").classList.add("hidden"); return; }
-  $("#pane").classList.remove("hidden");
-  $("#pane").innerHTML = `<div class="card rounded-2xl p-8 text-center">
-    <p class="font-medium">Pick a job to see the evidence</p>
-    <p class="muted text-sm mt-1.5 max-w-xs mx-auto">Each one shows the advert and the
-      employer's own careers page side by side, so you can judge it yourself.</p>
-  </div>`;
-}
+
 
 function step(delta) {
   const i = VISIBLE.findIndex(r => String(r.id) === String(CURRENT));
@@ -619,20 +1016,14 @@ function step(delta) {
 }
 
 function closeDetail(){
-  $("#detail").classList.add("hidden");
+  closeOpenPanels(null);
   CURRENT = null;
-  markSelected(null);
-  paneEmpty();
-  const p = new URLSearchParams(location.search); p.delete("listing");
-  history.replaceState(null, "", p.toString() ? `?${p}` : location.pathname);
+  syncUrl();
   if (lastFocus?.focus) lastFocus.focus();
   lastFocus = null;
 }
-$("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeDetail(); });
 document.addEventListener("keydown", e => {
-  const open = CURRENT !== null;
-  const dialog = !$("#detail").classList.contains("hidden");
-  if (!open && !dialog) return;
+  if (CURRENT === null) return;
   if (e.key === "Escape") closeDetail();
   if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
   if (e.key === "ArrowRight") step(1);
@@ -645,7 +1036,8 @@ async function loadCoverage() {
   if (!d.segments.length) return;
   const bar = d.segments.map((s, i) => `
     <div class="relative group" style="width:${(s.count / d.total) * 100}%;${i ? "margin-left:2px;" : ""}">
-      <div style="background:${isDark() ? s.color_dark : s.color};height:30px;border-radius:${
+      <div style="background:${isDark() ? s.color_dark : s.color};height:30px;
+        box-shadow:inset 0 0 0 1px rgba(4,20,37,.10);border-radius:${
         i === 0 ? "6px 0 0 6px" : i === d.segments.length - 1 ? "0 6px 6px 0" : "0"};"></div>
       <div class="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-9 z-10 opacity-0
         group-hover:opacity-100 transition card rounded px-2 py-1 text-xs whitespace-nowrap shadow">
@@ -667,9 +1059,9 @@ async function loadCoverage() {
 async function loadCompanies() {
   const rows = await api("/api/companies");
   WHY = Object.fromEntries(rows.map(c => [c.company, c.access]));
-  $("#companies").innerHTML = `<div class="card rounded-xl overflow-x-auto">
+  $("#companies").innerHTML = `<div class="card overflow-x-auto">
     <table class="w-full text-sm" style="min-width:560px">
-      <thead><tr class="text-xs uppercase dim" style="background:var(--bg)">
+      <thead><tr class="label" style="background:var(--raised)">
         <th class="text-left px-4 py-2.5">Employer</th>
         <th class="text-right px-4 py-2.5">Jobs</th>
         <th class="text-right px-4 py-2.5">Checked</th>
@@ -686,9 +1078,9 @@ async function loadCompanies() {
 
 async function loadCollectors() {
   const rows = await api("/api/collectors");
-  $("#collector-table").innerHTML = `<div class="card rounded-xl overflow-x-auto">
+  $("#collector-table").innerHTML = `<div class="card overflow-x-auto">
     <table class="w-full text-sm" style="min-width:520px">
-      <thead><tr class="text-xs uppercase dim" style="background:var(--bg)">
+      <thead><tr class="label" style="background:var(--raised)">
         <th class="text-left px-4 py-2.5">Collector</th>
         <th class="text-left px-4 py-2.5">ID</th>
         <th class="text-right px-4 py-2.5">Runs</th>
@@ -711,7 +1103,7 @@ async function loadHeal() {
   const h = await api("/api/heal");
   if (!h.collectors.length) return;
   $("#heal").innerHTML = h.collectors.map(c => `
-    <div class="card rounded-xl p-4">
+    <div class="card p-4">
       <p class="font-medium">Self-repair · <span class="mono text-xs"
         style="color:var(--accent)">${esc(c.collector_id)}</span></p>
       <p class="muted text-sm mt-1 max-w-3xl">This collector broke and was repaired
@@ -747,18 +1139,21 @@ function setTheme(dark){
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   try { localStorage.setItem("ghosthire-theme", dark ? "dark" : "light"); } catch (e) {}
   paintThemeButton();
-  if (ALL.length) render();   // avatar tints are per-surface
+  // No re-render: the rows are painted entirely from CSS custom properties, so
+  // they follow the theme on their own. render() here only had a job while the
+  // company avatars carried per-surface tints, and calling it tore down whatever
+  // evidence the reader had open — a theme switch is not a reason to close it.
   loadCoverage();             // the chart carries a palette per surface, not a filter
 }
 
 async function start() {
+  $("#jobs").innerHTML = skeleton();
   try {
-    META = await api("/api/meta");
     ALL = await api("/api/listings?limit=500");
     await loadCompanies();
 
     $("#filters").innerHTML = FILTERS.map(([k, label, test]) =>
-      `<button data-filter="${k}" class="chip pill px-3 py-1.5 text-xs">
+      `<button data-filter="${k}" class="chip pill px-3 py-1.5">
         ${label} <span class="dim">${ALL.filter(test).length}</span></button>`).join("");
     document.querySelectorAll("[data-filter]").forEach(b =>
       b.addEventListener("click", () => { FILTER = b.dataset.filter; EXPANDED = false; render(); }));
@@ -777,15 +1172,26 @@ async function start() {
 
     // "/" focuses search, the way every list-and-search tool behaves.
     document.addEventListener("keydown", e => {
-      if (e.key === "/" && document.activeElement !== $("#q")
-          && $("#detail").classList.contains("hidden")) {
+      if (e.key === "/" && document.activeElement !== $("#q")) {
         e.preventDefault(); $("#q").focus();
       }
     });
 
     if (INITIAL.get("q")) $("#q").value = INITIAL.get("q");
-    if (FILTERS.some(f => f[0] === INITIAL.get("show"))) FILTER = INITIAL.get("show");
+    const askedFor = INITIAL.get("show");
+    if (FILTERS.some(f => f[0] === askedFor)) FILTER = askedFor;
     if (companies.includes(INITIAL.get("employer"))) $("#company-filter").value = INITIAL.get("employer");
+
+    // A `?listing=` link is a promise to show that job. The default filter is
+    // Checked, which is 4 of 70 — so a link to any of the other 66 used to open
+    // nothing at all and say nothing about why. Where the reader did not pick a
+    // filter themselves, widen it far enough to keep the promise.
+    const wanted = INITIAL.get("listing");
+    if (wanted && !askedFor) {
+      const row = ALL.find(r => String(r.id) === String(wanted));
+      const test = (FILTERS.find(f => f[0] === FILTER) || FILTERS[0])[2];
+      if (row && !test(row)) FILTER = "all";
+    }
 
     for (const [id, row] of [["#legend-ok",   {assessed:true,  ghost_score:0}],
                             ["#legend-bad",  {assessed:true,  ghost_score:45}],
@@ -793,23 +1199,13 @@ async function start() {
       $(id).innerHTML = verdictPill(row);
     }
 
+    // CURRENT is set before the first render so that render() opens the deep
+    // link itself, rather than a second pass fighting the one that just ran.
+    if (wanted) CURRENT = wanted;
     render();
-    // On a wide screen an empty pane is half the window doing nothing, so the
-    // first result opens by default. On a narrow one nothing opens, because a
-    // dialog on arrival would be an interruption rather than a view.
-    if (INITIAL.get("listing")) openDetail(INITIAL.get("listing"));
-    else if (WIDE() && VISIBLE.length) openDetail(VISIBLE[0].id);
-    else paneEmpty();
-
-    // Crossing the breakpoint must move an open job between the pane and the
-    // dialog, or it ends up rendered into whichever one is now hidden.
-    matchMedia("(min-width:1060px)").addEventListener("change", () => {
-      if (CURRENT !== null) { $("#detail").classList.add("hidden"); openDetail(CURRENT); }
-      else paneEmpty();
-    });
     loadCoverage(); loadCollectors(); loadHeal();
   } catch (err) {
-    $("#jobs").innerHTML = `<div class="card rounded-xl p-6">
+    $("#jobs").innerHTML = `<div class="card p-6">
       <p style="color:var(--bad)">Could not load jobs: ${esc(err.message)}</p>
       <p class="muted text-sm mt-1">Is the API running?
         <span class="mono text-xs">uvicorn ghosthire.api:app --reload</span></p></div>`;
