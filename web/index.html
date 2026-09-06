@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GhostHire — jobs, verified against the employer</title>
+<!-- The mark as an inline data URI rather than a file: this page is served by
+     the API from a single HTML document, and a favicon route is one more thing
+     that can 404 in a deployment. SVG scales to whatever size the browser
+     asks for, so there is no 16/32 pair to keep in sync. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%23ce3500'/%3E%3Cpath%20d='M8.6%2026.4V15a7.4%207.4%200%200114.8%200v11.4l-3.7-3.4-3.7%203.4-3.7-3.4z'%20fill='%23fff'/%3E%3Crect%20x='12.4'%20y='13.4'%20width='2.5'%20height='3.6'%20rx='1.25'%20fill='%23ce3500'/%3E%3Crect%20x='17.1'%20y='13.4'%20width='2.5'%20height='3.6'%20rx='1.25'%20fill='%23ce3500'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#ce3500">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -340,8 +346,7 @@
 <header class="sticky top-0 z-30 border-b" style="background:var(--card);border-color:var(--line)">
   <div class="shell h-14 flex items-center justify-between gap-4">
     <a href="#top" class="flex items-center gap-2.5 shrink-0">
-      <span class="w-7 h-7 rounded-[4px] flex items-center justify-center text-[13px] font-bold"
-            style="background:var(--accent);color:#fff">G</span>
+      <svg viewBox="0 0 32 32" width="28" height="28" class="shrink-0" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M8.6 26.4V15a7.4 7.4 0 0114.8 0v11.4l-3.7-3.4-3.7 3.4-3.7-3.4z" fill="var(--card)"/><rect x="12.4" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/><rect x="17.1" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/></svg>
       <span class="display text-[15px]">GhostHire</span>
     </a>
     <nav class="wide-only items-center gap-6" aria-label="Sections">
@@ -546,8 +551,7 @@
   <div class="shell py-10 grid gap-8 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
     <div>
       <div class="flex items-center gap-2.5">
-        <span class="w-7 h-7 rounded-[4px] flex items-center justify-center text-[13px] font-bold"
-              style="background:var(--accent);color:#fff">G</span>
+        <svg viewBox="0 0 32 32" width="26" height="26" class="shrink-0" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M8.6 26.4V15a7.4 7.4 0 0114.8 0v11.4l-3.7-3.4-3.7 3.4-3.7-3.4z" fill="var(--card)"/><rect x="12.4" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/><rect x="17.1" y="13.4" width="2.5" height="3.6" rx="1.25" fill="var(--accent)"/></svg>
         <span class="display text-[15px]">GhostHire</span>
       </div>
       <p class="muted text-sm mt-3 max-w-md">
